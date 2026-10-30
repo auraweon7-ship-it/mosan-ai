@@ -712,8 +712,26 @@
   var calToday = h("button", { class: "cal-today", type: "button" }, "오늘");
 
   var studentBar = h("div", { class: "card student-bar reveal" }); // 수강생 로그인 상태 (아래 renderStudentBar에서 채움)
+  // 온라인 강의실(Zoom) 입장 상자와 버튼
+  var zoom = cur.zoom && cur.zoom.url ? cur.zoom : null;
+  function zoomButton(cls) {
+    return h("a", { class: "btn btn-zoom " + (cls || ""), href: zoom.url, target: "_blank", rel: "noopener" }, "🎥 " + (zoom.buttonLabel || "Zoom 입장"));
+  }
+  var zoomBox = zoom ? h("div", { class: "card zoom-box reveal", id: "zoom" }, [
+    h("div", { class: "zoom-main" }, [
+      h("span", { class: "zoom-ico", "aria-hidden": "true" }, "🎥"),
+      h("div", {}, [
+        h("h3", {}, zoom.title || "온라인 강의실"),
+        h("p", { class: "zoom-when" }, "매주 목요일 " + sched.time + (zoom.meetingId ? " · 회의 ID " + zoom.meetingId : "")),
+      ]),
+      zoomButton(""),
+    ]),
+    (zoom.tips || []).length ? h("ul", { class: "zoom-tips" }, zoom.tips.map(function (t) { return h("li", {}, t); })) : null,
+  ]) : null;
+
   // 달력을 위에, 주차 목록을 아래에 둡니다(일정을 먼저 보도록).
   var curEl = section(cur, [
+    zoomBox,
     h("h3", { class: "sub-title reveal", id: "calendar" }, twoTone(cur.calendarTitle)),
     h("div", { class: "cal-wrap reveal" }, [
       h("div", { class: "card cal" }, [
@@ -783,6 +801,7 @@
         ]),
         w.locked ? h("p", { class: "cal-note" }, "🔒 학습 내용은 승인된 수강생만 볼 수 있습니다.") : dotList(w.topics || []),
         w.locked ? null : practiceBlock(w),
+        zoom ? zoomButton("btn-sm") : null,
         w.assignment ? h("p", { class: "cal-note" }, "📝 과제: " + w.assignment.title + " (마감 " + fmtDateTime(w._due) + ")") : null,
         more,
       ].forEach(function (el) { if (el) calDetail.appendChild(el); });

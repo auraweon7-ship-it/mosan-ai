@@ -46,6 +46,7 @@ window.SITE_CONFIG = {
       // href가 "#"으로 시작하면 페이지 안 이동, 주소(https://…)면 새 창으로 열립니다.
       { label: "수강 신청", href: "#apply", primary: true },
       { label: "교육 일정 보기", href: "#calendar", primary: false },
+      { label: "🎥 Zoom 수업 입장", href: "https://us05web.zoom.us/j/89978809823?pwd=RCMGuMJXdcaCIIamXPVHZyMlvLdCho.1", primary: false },
     ],
     // 한눈에 보기
     quickInfo: [
@@ -65,7 +66,7 @@ window.SITE_CONFIG = {
     title: "공지사항",
     lead: "교육과 관련한 새 소식을 알려 드립니다.",
     items: [
-      { title: "첫 수업은 12월 3일(목) 저녁 7시입니다", text: "운영은 12월 1일(화)부터 시작하며, 첫 정규 수업은 12월 3일(목) 19:00에 화상회의로 진행합니다.\n접속 주소는 수업 전날까지 개별 안내드립니다.", date: "2026-11-20", pinned: true },
+      { title: "첫 수업은 12월 3일(목) 저녁 7시입니다", text: "운영은 12월 1일(화)부터 시작하며, 첫 정규 수업은 12월 3일(목) 19:00에 화상회의로 진행합니다.\nZoom 입장 버튼은 첫 화면과 교육 일정의 온라인 강의실 상자에 있습니다.", date: "2026-11-20", pinned: true },
       { title: "휴강·보강 안내 원칙", text: "명절·공휴일 및 강사·학습자 일정에 따라 휴강할 경우 보강일을 별도로 정해 공지하고 달력에 표시합니다.", date: "2026-11-20", pinned: false },
     ],
   },
@@ -178,6 +179,20 @@ window.SITE_CONFIG = {
       time: "19:00 – 21:00",
       location: "온라인 실시간",
       submitUrl: "#classroom",
+    },
+
+    /* 온라인 강의실(Zoom) — 교육 일정 위에 입장 상자가, 달력·주차·첫 화면에 입장 버튼이 표시됩니다.
+     *   url은 Zoom 초대 링크(비밀번호 포함)입니다. 비워 두면 Zoom 안내를 표시하지 않습니다. */
+    zoom: {
+      title: "온라인 강의실 (Zoom)",
+      url: "https://us05web.zoom.us/j/89978809823?pwd=RCMGuMJXdcaCIIamXPVHZyMlvLdCho.1",
+      meetingId: "899 7880 9823",
+      buttonLabel: "Zoom 수업 입장",
+      tips: [
+        "수업 10분 전(18:50)부터 입장할 수 있습니다.",
+        "처음이면 Zoom 앱이 설치됩니다. 컴퓨터는 '브라우저에서 참가'로도 들어올 수 있습니다.",
+        "입장할 때 이름을 실명으로 바꿔 주세요. 마이크는 끄고, 말할 때만 켭니다.",
+      ],
     },
 
     /* 주차별 내용 (엑셀 '52주 상세일정' 시트에서 자동 생성)
@@ -369,21 +384,19 @@ window.SITE_CONFIG = {
         },
       },
       {
-        icon: "🎨", name: "Canva", category: "콘텐츠 제작",
-        text: "카드뉴스·포스터·발표자료를 디자인합니다.",
+        icon: "📌", name: "Pinterest", category: "디자인 참고",
+        text: "카드뉴스·포스터·발표자료에 쓸 템플릿과 디자인 아이디어 이미지를 찾아 내려받습니다.",
         detail: {
-          maker: "Canva",
-          url: "https://www.canva.com",
-          pricingUrl: "https://www.canva.com/pricing/",
-          summary: "템플릿을 골라 글자와 사진만 바꾸면 카드뉴스·포스터·발표자료·짧은 영상을 만들 수 있는 디자인 도구입니다. AI로 글·이미지 만들기와 배경 제거도 할 수 있습니다.",
+          maker: "Pinterest",
+          url: "https://kr.pinterest.com/",
+          summary: "전 세계 사람들이 올린 이미지를 주제별로 모아 보는 시각 검색 서비스입니다. '카드뉴스 템플릿', '포스터 디자인'처럼 검색하면 참고할 디자인을 한눈에 볼 수 있고, 마음에 드는 이미지는 보드에 저장하거나 내려받을 수 있습니다.",
           pricing: [
-            { plan: "무료", price: "0원", note: "템플릿·사진 다수, 일부 AI 기능은 월 사용량 제한" },
-            { plan: "Pro", price: "월 약 $15~18 (지역별 다름)", note: "프리미엄 소재, 배경 제거, AI 기능 확대" },
-            { plan: "팀(Business)", price: "1인당 월 약 $25", note: "여러 명이 함께 디자인" },
+            { plan: "개인 계정", price: "무료", note: "검색·저장(핀)·보드 만들기·이미지 내려받기 모두 무료 (광고 표시)" },
+            { plan: "비즈니스 계정", price: "무료", note: "홍보·통계 기능 (광고 집행은 별도 비용)" },
           ],
-          uses: ["지역 행사·동호회 홍보 카드뉴스 4장 만들기", "AI로 문구를 쓰고 템플릿에 배치", "발표자료 10장 구성하고 사진·도표 넣기", "사진 배경 지우기 (Pro)"],
-          weeks: "19·20·24·25주차",
-          tip: "무료 소재만으로도 수업 실습은 충분합니다. 왕관(👑) 표시가 있는 소재는 유료입니다.",
+          uses: ["'카드뉴스 템플릿', '발표자료 디자인'으로 검색해 참고 이미지 찾기", "마음에 드는 이미지를 내 보드에 저장(핀)해 모아 두기", "이미지를 눌러 오른쪽 위 ⋯ → '이미지 다운로드'로 내려받기", "모은 이미지를 AI에게 보여 주고 비슷한 분위기로 만들어 달라고 하기"],
+          weeks: "18·19·20·47주차",
+          tip: "Pinterest의 이미지는 대부분 다른 사람의 저작물입니다. 내려받은 이미지는 개인 학습·참고용으로만 쓰고, 그대로 홍보물이나 웹앱에 올리지 마세요.",
         },
       },
       {
@@ -440,6 +453,61 @@ window.SITE_CONFIG = {
           uses: ["할 일 목록·퀴즈 같은 미니 웹앱 만들기", "제목·색·버튼을 말로 바꿔 달라고 하기", "큰 글씨·쉬운 메뉴로 보기 편한 화면 설계", "완성한 웹앱을 인터넷 주소로 공유"],
           weeks: "44~52주차",
           tip: "처음에는 작은 기능 하나부터 시작하세요. 개인정보를 받는 웹앱은 만들지 않습니다.",
+        },
+      },
+      {
+        icon: "🐙", name: "GitHub", category: "코드 저장·관리",
+        text: "만든 웹앱 파일을 인터넷 저장소에 보관하고 버전을 관리합니다.",
+        detail: {
+          maker: "GitHub (Microsoft)",
+          url: "https://github.com",
+          pricingUrl: "https://github.com/pricing",
+          summary: "웹앱을 이루는 파일(HTML·CSS·JavaScript 등)을 인터넷 저장소에 올려 보관하는 서비스입니다. 고칠 때마다 기록이 남아 예전 상태로 되돌릴 수 있고, Vercel·Railway와 연결하면 저장소에 올리는 것만으로 웹앱이 자동 배포됩니다.",
+          pricing: [
+            { plan: "Free", price: "$0", note: "개인 사용 무료, 공개·비공개 저장소 모두 가능" },
+            { plan: "Pro", price: "월 약 $4", note: "고급 기능 추가 (수업에는 필요 없음)" },
+            { plan: "Copilot", price: "무료 / Pro 월 $10~", note: "AI 코딩 도우미는 별도 요금 (수업에는 필요 없음)" },
+          ],
+          uses: ["무료 계정 만들고 첫 저장소(Repository) 만들기", "AI가 만든 웹앱 파일을 저장소에 올리기 (Add file → Upload files)", "파일을 고친 기록(Commit) 보고 예전으로 되돌리기", "Vercel·Railway와 연결해 자동 배포하기"],
+          weeks: "50~52주차",
+          tip: "비밀번호·API 키 같은 비밀 정보는 저장소에 올리지 마세요. 공개 저장소는 누구나 볼 수 있습니다.",
+        },
+      },
+      {
+        icon: "▲", name: "Vercel", category: "웹 배포",
+        text: "GitHub에 올린 웹앱을 클릭 몇 번으로 인터넷 주소에 공개합니다.",
+        detail: {
+          maker: "Vercel",
+          url: "https://vercel.com",
+          pricingUrl: "https://vercel.com/pricing",
+          summary: "GitHub 저장소를 연결하면 웹앱을 인터넷에 공개하고 '○○.vercel.app' 주소를 만들어 주는 배포 서비스입니다. 파일을 고쳐 GitHub에 올리면 사이트도 자동으로 새로 고쳐집니다. 화면만 있는 정적 웹앱을 올리기에 가장 쉽습니다.",
+          pricing: [
+            { plan: "Hobby", price: "$0", note: "개인·비상업용 무료, 월 데이터 전송량 한도 있음" },
+            { plan: "Pro", price: "1인당 월 $20", note: "상업용 사이트, 사용량 크레딧 포함 (초과분 별도 과금)" },
+            { plan: "Enterprise", price: "별도 문의", note: "기업용" },
+          ],
+          uses: ["GitHub 계정으로 로그인하기", "저장소를 골라 'Deploy' 눌러 웹앱 공개하기", "만들어진 주소를 가족·동료에게 공유하기", "파일을 고쳐 다시 올리면 자동으로 반영되는지 확인"],
+          weeks: "50주차",
+          tip: "수업 실습은 무료(Hobby)로 충분합니다. 수익을 내는 사이트는 유료(Pro)를 써야 합니다.",
+        },
+      },
+      {
+        icon: "🚆", name: "Railway", category: "웹 배포·서버",
+        text: "데이터 저장이 필요한 웹앱을 서버와 데이터베이스까지 함께 배포합니다.",
+        detail: {
+          maker: "Railway",
+          url: "https://railway.com",
+          pricingUrl: "https://railway.com/pricing",
+          summary: "서버 프로그램과 데이터베이스가 필요한 웹앱을 올려 운영하는 클라우드 서비스입니다. GitHub 저장소를 연결하면 자동으로 배포되고, 이 사이트처럼 신청서·출석 기록을 저장하는 웹앱(PostgreSQL)을 운영할 수 있습니다.",
+          pricing: [
+            { plan: "체험(Trial)", price: "$5 크레딧 1회", note: "가입 시 한 번 제공, 약 30일 후 만료" },
+            { plan: "Free", price: "$0", note: "매월 $1 크레딧 (아주 작은 실습용)" },
+            { plan: "Hobby", price: "월 $5", note: "$5 사용량 포함, 초과분은 사용한 만큼 과금" },
+            { plan: "Pro", price: "월 $20", note: "팀·운영용, 사용량 별도" },
+          ],
+          uses: ["GitHub 계정으로 로그인하고 저장소 연결하기", "웹앱과 데이터베이스(PostgreSQL)를 함께 만들기", "환경 변수(비밀번호 등)를 안전하게 설정하기", "사용량·요금 화면에서 비용 확인하기"],
+          weeks: "50주차",
+          tip: "사용한 만큼 요금이 나오는 방식이라, 실습이 끝나면 쓰지 않는 서비스는 꼭 정지·삭제하세요. 결제 카드를 등록하기 전에 요금 화면을 확인하세요.",
         },
       },
     ],
