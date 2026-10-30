@@ -185,7 +185,7 @@ window.SITE_CONFIG = {
      *   practice : 실습 활동·과제  outcome  : 주차별 결과물 */
     weeks: [
       /* WEEKS:BEGIN */
-      {"week": 1, "title": "AI 시대와 은퇴 후 새로운 기회", "tag": "", "stage": "AI 기초와 디지털 활용", "date": "2026-12-03", "time": "19:00 – 21:00", "location": "온라인 실시간", "topics": ["AI의 활용 분야와 한계 이해", "시니어 AI 활용 성공 사례 살펴보기", "개인 목표와 사전 디지털 역량 진단"], "practice": "AI로 해보고 싶은 일 3가지와 연간 학습 목표 작성", "outcome": "개인 AI 학습 목표서", "materials": [], "videos": []},
+      {"week": 1, "title": "AI 시대와 새로운 기회", "tag": "", "stage": "AI 기초와 디지털 활용", "date": "2026-12-03", "time": "19:00 – 21:00", "location": "온라인 실시간", "topics": ["AI의 활용 분야와 한계 이해", "시니어 AI 활용 성공 사례 살펴보기", "개인 목표와 사전 디지털 역량 진단"], "practice": "AI로 해보고 싶은 일 3가지와 연간 학습 목표 작성", "outcome": "개인 AI 학습 목표서", "materials": [], "videos": []},
       {"week": 2, "title": "생성형 AI와 주요 도구 비교", "tag": "", "stage": "AI 기초와 디지털 활용", "date": "2026-12-10", "time": "19:00 – 21:00", "location": "온라인 실시간", "topics": ["생성형 AI·LLM·챗봇의 차이 이해", "ChatGPT·Gemini·Claude의 화면과 기능 비교", "무료·유료 기능과 요금 주의사항 확인"], "practice": "동일 질문을 2개 AI에 입력하고 답변 비교", "outcome": "AI 도구 비교표", "materials": [], "videos": []},
       {"week": 3, "title": "ChatGPT 시작 및 파일 활용", "tag": "", "stage": "AI 기초와 디지털 활용", "date": "2026-12-17", "time": "19:00 – 21:00", "location": "온라인 실시간", "topics": ["회원가입·로그인과 대화 기록 확인", "텍스트 질문 및 후속 질문 연습", "PDF·사진 첨부와 개인정보 삭제 원칙 학습"], "practice": "자신의 소개문과 공개 문서의 요약문 생성", "outcome": "첫 AI 대화 기록", "materials": [], "videos": []},
       {"week": 4, "title": "스마트폰 AI와 음성 대화", "tag": "", "stage": "AI 기초와 디지털 활용", "date": "2026-12-24", "time": "19:00 – 21:00", "location": "온라인 실시간", "topics": ["모바일 앱 설치와 접근성 설정", "음성 입력·대화로 질문하기", "카메라·사진 기반 사물 설명 및 번역"], "practice": "사진 1장을 분석하고 음성으로 후속 질문하기", "outcome": "스마트폰 AI 활용 카드", "materials": [], "videos": []},
@@ -290,16 +290,158 @@ window.SITE_CONFIG = {
     lead: "모든 수업은 온라인 실시간 화상회의로 진행합니다. 강의 · 시연 · 실습을 한 회 안에서 함께 하고, 매주 결과물을 만들어 공유합니다.",
 
     toolsTitle: "주요 실습 도구",
+    /* 도구 카드를 누르면 detail 정보가 팝업으로 열립니다.
+     *   summary 소개 · url 바로가기 · links 여러 링크 · pricing 요금제(plan/price/note)
+     *   uses 활용 방법 · weeks 관련 주차 · tip 주의할 점 · pricingUrl 공식 요금 페이지
+     *   요금은 2026년 10월 기준 참고값입니다. */
+    pricingNote: "※ 요금은 2026년 10월 기준 참고값이며 환율·국가·프로모션에 따라 달라질 수 있습니다. 결제 전 공식 요금 페이지를 꼭 확인하세요.",
     tools: [
-      { icon: "💬", name: "ChatGPT", category: "생성형 AI", text: "질문·요약·문서 작성 등 AI 기초 실습의 중심 도구입니다." },
-      { icon: "🔮", name: "Gemini", category: "생성형 AI", text: "다른 AI와 답변을 비교하고 검색 기반 질문에 활용합니다." },
-      { icon: "✨", name: "Claude", category: "생성형 AI", text: "긴 글 작성·문서 분석·코드 생성에 활용합니다." },
-      { icon: "📒", name: "NotebookLM", category: "지식 정리", text: "자료를 올려 출처 기반으로 질문하고 학습 노트를 만듭니다." },
-      { icon: "🎨", name: "Canva", category: "콘텐츠 제작", text: "카드뉴스·포스터·발표자료를 디자인합니다." },
-      { icon: "🎵", name: "음성·음악·영상 AI", category: "콘텐츠 제작", text: "내레이션, 노래, 짧은 영상을 AI로 만들어 봅니다." },
-      { icon: "🔗", name: "Make · n8n", category: "자동화", text: "트리거와 작업을 연결해 반복 업무를 자동화합니다." },
-      { icon: "📊", name: "Google Sheets · Airtable", category: "데이터", text: "입력값을 자동으로 기록하는 표를 만듭니다." },
-      { icon: "⌨️", name: "AI 코딩 도구", category: "바이브코딩", text: "말로 지시해 나만의 웹앱을 만들고 배포합니다." },
+      {
+        icon: "💬", name: "ChatGPT", category: "생성형 AI",
+        text: "질문·요약·문서 작성 등 AI 기초 실습의 중심 도구입니다.",
+        detail: {
+          maker: "OpenAI",
+          url: "https://chatgpt.com",
+          pricingUrl: "https://chatgpt.com/pricing",
+          summary: "가장 널리 쓰이는 대화형 AI입니다. 말하듯 질문하면 답을 주고, 글쓰기·요약·번역·사진 설명·음성 대화까지 한곳에서 할 수 있습니다.",
+          pricing: [
+            { plan: "무료", price: "$0", note: "기본 모델, 사용량 제한, 광고가 표시될 수 있음" },
+            { plan: "Go", price: "월 $8", note: "더 넉넉한 사용량 (국가별 가격 다름)" },
+            { plan: "Plus", price: "월 $20", note: "최신 모델, 심층 리서치, 이미지·영상 생성 확대" },
+            { plan: "Pro", price: "월 $100 / $200", note: "전문가용 대용량 사용" },
+          ],
+          uses: ["궁금한 것을 말하듯 묻고 후속 질문으로 다듬기", "공지문·이메일·인사말 초안 작성 후 고치기", "PDF·사진을 올려 요약하거나 설명 듣기", "스마트폰 앱에서 음성으로 대화하기"],
+          weeks: "2·3·4·6주차",
+          tip: "개인정보(주민번호·계좌·병원 기록)는 입력하지 마세요. 수업은 무료 플랜으로 진행합니다.",
+        },
+      },
+      {
+        icon: "🔮", name: "Gemini", category: "생성형 AI",
+        text: "다른 AI와 답변을 비교하고 검색 기반 질문에 활용합니다.",
+        detail: {
+          maker: "Google",
+          url: "https://gemini.google.com",
+          pricingUrl: "https://one.google.com/about/google-ai-plans/",
+          summary: "구글의 대화형 AI입니다. 구글 검색·지도·유튜브·지메일과 연결되어 최신 정보를 찾거나 구글 서비스와 함께 쓰기 좋습니다.",
+          pricing: [
+            { plan: "무료", price: "0원", note: "구글 계정만 있으면 사용" },
+            { plan: "Google AI Plus", price: "월 약 11,000원", note: "사용량 확대, 저장공간 추가" },
+            { plan: "Google AI Pro", price: "월 약 29,000원", note: "고급 모델·심층 리서치, NotebookLM 한도 확대" },
+          ],
+          uses: ["같은 질문을 ChatGPT와 비교해 보기", "유튜브 영상·웹 페이지 내용 요약", "구글 지도와 함께 여행 계획 세우기", "사진을 찍어 사물·글자 설명 듣기"],
+          weeks: "2·5·7주차",
+          tip: "답변의 출처 링크를 눌러 사실 여부를 꼭 확인하세요.",
+        },
+      },
+      {
+        icon: "✨", name: "Claude", category: "생성형 AI",
+        text: "긴 글 작성·문서 분석·코드 생성에 활용합니다.",
+        detail: {
+          maker: "Anthropic",
+          url: "https://claude.ai",
+          pricingUrl: "https://claude.com/pricing",
+          summary: "자연스럽고 정돈된 글쓰기와 긴 문서 분석에 강한 대화형 AI입니다. 웹페이지·문서를 바로 만들어 보여 주는 기능도 있어 바이브코딩 실습에 활용합니다.",
+          pricing: [
+            { plan: "무료", price: "$0", note: "하루 사용량 제한" },
+            { plan: "Pro", price: "월 $20 (연간 결제 시 월 $17)", note: "사용량 확대, Claude Code 포함" },
+            { plan: "Max", price: "월 $100 / $200", note: "대용량 사용" },
+          ],
+          uses: ["회고록·소개글처럼 긴 글을 함께 쓰고 다듬기", "긴 PDF·보고서를 올려 핵심 정리", "말로 설명해 간단한 웹페이지·퀴즈 만들기", "표·체크리스트 형태로 정리 요청"],
+          weeks: "2·11·17·45주차",
+          tip: "결과물은 그대로 쓰지 말고 사실과 표현을 한 번 더 확인하세요.",
+        },
+      },
+      {
+        icon: "📒", name: "NotebookLM", category: "지식 정리",
+        text: "자료를 올려 출처 기반으로 질문하고 학습 노트를 만듭니다.",
+        detail: {
+          maker: "Google",
+          url: "https://notebooklm.google.com",
+          pricingUrl: "https://one.google.com/about/google-ai-plans/",
+          summary: "내가 올린 자료(PDF·웹페이지·유튜브·메모)만 근거로 답하는 AI 노트입니다. 답변마다 출처가 표시되고, 자료를 대화형 오디오(팟캐스트)로 만들어 주기도 합니다.",
+          pricing: [
+            { plan: "무료", price: "0원", note: "구글 계정으로 사용, 하루 사용량 제한" },
+            { plan: "Google AI 구독", price: "Plus·Pro 요금제에 포함", note: "노트·자료 수, 오디오 개요 횟수 확대" },
+          ],
+          uses: ["공공기관 자료·PDF 여러 개를 올려 비교 질문", "강의 자료로 요약 노트·퀴즈 만들기", "자료를 오디오 개요로 만들어 산책하며 듣기", "책·기사 내용을 출처와 함께 정리"],
+          weeks: "15주차",
+          tip: "저작권이 있는 자료는 개인 학습용으로만 쓰고 결과물을 공개하지 마세요.",
+        },
+      },
+      {
+        icon: "🎨", name: "Canva", category: "콘텐츠 제작",
+        text: "카드뉴스·포스터·발표자료를 디자인합니다.",
+        detail: {
+          maker: "Canva",
+          url: "https://www.canva.com",
+          pricingUrl: "https://www.canva.com/pricing/",
+          summary: "템플릿을 골라 글자와 사진만 바꾸면 카드뉴스·포스터·발표자료·짧은 영상을 만들 수 있는 디자인 도구입니다. AI로 글·이미지 만들기와 배경 제거도 할 수 있습니다.",
+          pricing: [
+            { plan: "무료", price: "0원", note: "템플릿·사진 다수, 일부 AI 기능은 월 사용량 제한" },
+            { plan: "Pro", price: "월 약 $15~18 (지역별 다름)", note: "프리미엄 소재, 배경 제거, AI 기능 확대" },
+            { plan: "팀(Business)", price: "1인당 월 약 $25", note: "여러 명이 함께 디자인" },
+          ],
+          uses: ["지역 행사·동호회 홍보 카드뉴스 4장 만들기", "AI로 문구를 쓰고 템플릿에 배치", "발표자료 10장 구성하고 사진·도표 넣기", "사진 배경 지우기 (Pro)"],
+          weeks: "19·20·24·25주차",
+          tip: "무료 소재만으로도 수업 실습은 충분합니다. 왕관(👑) 표시가 있는 소재는 유료입니다.",
+        },
+      },
+      {
+        icon: "🎵", name: "음성·음악·영상 AI", category: "콘텐츠 제작",
+        text: "내레이션, 노래, 짧은 영상을 AI로 만들어 봅니다.",
+        detail: {
+          maker: "ElevenLabs · Suno 등",
+          url: "https://elevenlabs.io",
+          pricingUrl: "https://elevenlabs.io/pricing",
+          links: [{ label: "ElevenLabs (음성)", url: "https://elevenlabs.io" }, { label: "Suno (음악)", url: "https://suno.com" }],
+          summary: "글을 자연스러운 목소리로 읽어 주는 음성 AI(ElevenLabs), 가사와 분위기만 정하면 노래를 만들어 주는 음악 AI(Suno) 등을 체험합니다. 만든 음성·음악은 Canva에서 영상으로 엮습니다.",
+          pricing: [
+            { plan: "ElevenLabs 무료", price: "$0", note: "월 10,000 크레딧, 상업적 이용 불가" },
+            { plan: "ElevenLabs Starter", price: "월 약 $5~6", note: "상업적 이용 가능" },
+            { plan: "Suno 무료", price: "$0", note: "생성 횟수 제한, 상업적 이용 불가" },
+            { plan: "Suno Pro", price: "월 약 $8~10", note: "생성량 확대, 상업적 이용 가능" },
+          ],
+          uses: ["1분 자기소개 내레이션 만들기", "가족·여행 주제로 짧은 노래 만들기", "이미지·음성·음악을 묶어 1분 영상 완성", "자막 넣고 유튜브·블로그에 올리기"],
+          weeks: "21·22·23·24주차",
+          tip: "다른 사람의 목소리를 흉내 내거나 허락 없이 쓰면 안 됩니다. 무료 플랜 결과물은 개인 용도로만 쓰세요.",
+        },
+      },
+      {
+        icon: "📊", name: "Google Sheets", category: "데이터",
+        text: "입력값을 자동으로 기록하는 표를 만듭니다.",
+        detail: {
+          maker: "Google",
+          url: "https://sheets.google.com",
+          pricingUrl: "https://workspace.google.com/pricing",
+          summary: "인터넷에서 쓰는 무료 엑셀입니다. 여러 사람이 함께 고칠 수 있고, 구글 설문지 응답을 자동으로 모으거나 Gemini에게 표 정리를 부탁할 수 있습니다.",
+          pricing: [
+            { plan: "개인", price: "0원", note: "구글 계정으로 무료 (저장공간 15GB 공유)" },
+            { plan: "Google Workspace", price: "1인당 월 유료", note: "회사·단체용 (개인 수업에는 필요 없음)" },
+          ],
+          uses: ["독서·운동·지출 기록표 만들기", "구글 설문지 응답을 표로 자동 정리", "AI에게 함수·정리 방법 물어보기", "표를 공유해 동호회 명단 함께 관리"],
+          weeks: "40주차",
+          tip: "링크 공유를 켜면 주소를 아는 누구나 볼 수 있으니 개인정보가 담긴 표는 조심하세요.",
+        },
+      },
+      {
+        icon: "⌨️", name: "AI 코딩 도구", category: "바이브코딩",
+        text: "말로 지시해 나만의 웹앱을 만들고 배포합니다.",
+        detail: {
+          maker: "Claude · Google AI Studio 등",
+          url: "https://claude.ai",
+          pricingUrl: "https://claude.com/pricing",
+          links: [{ label: "Claude", url: "https://claude.ai" }, { label: "Google AI Studio", url: "https://aistudio.google.com" }],
+          summary: "코드를 몰라도 원하는 화면과 기능을 말로 설명하면 AI가 웹앱을 만들어 줍니다(바이브코딩). 결과를 바로 미리 보고, 고칠 점을 말로 요청하며 완성합니다.",
+          pricing: [
+            { plan: "Claude 무료", price: "$0", note: "간단한 웹페이지·퀴즈 만들기 체험" },
+            { plan: "Claude Pro", price: "월 $20", note: "Claude Code로 본격적인 웹앱 제작" },
+            { plan: "Google AI Studio", price: "무료", note: "구글 계정으로 웹앱 생성·미리보기" },
+          ],
+          uses: ["할 일 목록·퀴즈 같은 미니 웹앱 만들기", "제목·색·버튼을 말로 바꿔 달라고 하기", "큰 글씨·쉬운 메뉴로 보기 편한 화면 설계", "완성한 웹앱을 인터넷 주소로 공유"],
+          weeks: "44~52주차",
+          tip: "처음에는 작은 기능 하나부터 시작하세요. 개인정보를 받는 웹앱은 만들지 않습니다.",
+        },
+      },
     ],
 
     // 막대 그래프 상자 — percent에는 숫자, gradingUnit은 숫자 뒤에 붙는 단위, gradingTotal은 막대 100%에 해당하는 값

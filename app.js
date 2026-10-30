@@ -920,6 +920,62 @@
   var guideBox = h("div", { class: "guide-box" });
   var guideDrawn = false;
   // 관리자가 카드를 추가·수정·삭제하면 다시 불립니다. 관리자용 버튼은 admin.js가 붙입니다.
+  // 실습 도구 정보 팝업: 소개 · 바로가기 · 요금제 · 활용 방법 · 관련 주차 · 주의할 점
+  function openTool(t) {
+    var d = t.detail;
+    var lastFocus = document.activeElement;
+    var closeBtn = h("button", { class: "modal-close", type: "button", "aria-label": "닫기" }, "×");
+    var links = (d.links && d.links.length) ? d.links : (d.url ? [{ label: t.name + " 바로가기", url: d.url }] : []);
+    var body = h("div", { class: "tool-modal" }, [
+      h("div", { class: "tool-modal-head" }, [
+        iconBubble(t.icon),
+        h("div", {}, [
+          h("h2", {}, t.name),
+          h("div", { class: "tool-modal-meta" }, [
+            t.category ? h("span", { class: "tag" }, t.category) : null,
+            d.maker ? h("span", {}, d.maker) : null,
+          ]),
+        ]),
+      ]),
+      d.summary ? h("p", { class: "tool-modal-summary" }, d.summary) : null,
+      links.length ? h("div", { class: "tool-modal-links" }, links.map(function (l, i) {
+        return h("a", { class: "btn btn-sm " + (i ? "btn-ghost" : "btn-primary"), href: l.url, target: "_blank", rel: "noopener" }, l.label + " ↗");
+      })) : null,
+      (d.pricing || []).length ? h("section", { class: "tool-modal-block" }, [
+        h("h4", {}, "💳 요금 체계"),
+        h("div", { class: "price-list" }, d.pricing.map(function (p) {
+          return h("div", { class: "price-row" }, [h("b", {}, p.plan), h("span", { class: "price" }, p.price), h("small", {}, p.note)]);
+        })),
+        h("p", { class: "card-note" }, [
+          guide.pricingNote ? guide.pricingNote + " " : "",
+          d.pricingUrl ? h("a", { href: d.pricingUrl, target: "_blank", rel: "noopener" }, "공식 요금 페이지 ↗") : null,
+        ]),
+      ]) : null,
+      (d.uses || []).length ? h("section", { class: "tool-modal-block" }, [
+        h("h4", {}, "🛠️ 이렇게 활용해요"),
+        h("ol", { class: "topic-list" }, d.uses.map(function (u) { return h("li", {}, u); })),
+      ]) : null,
+      d.weeks || d.tip ? h("div", { class: "tool-modal-foot" }, [
+        d.weeks ? h("div", { class: "wd-pr" }, [h("small", {}, "🗓️ 수업에서 쓰는 주차"), h("p", {}, d.weeks)]) : null,
+        d.tip ? h("div", { class: "wd-pr" }, [h("small", {}, "⚠️ 알아 두세요"), h("p", {}, d.tip)]) : null,
+      ]) : null,
+    ]);
+    var modal = h("div", { class: "modal modal-wide tool-modal-box", role: "dialog", "aria-modal": "true", "aria-label": t.name + " 정보" }, [closeBtn, body]);
+    var backdrop = h("div", { class: "modal-backdrop" }, [modal]);
+    function close() {
+      backdrop.classList.remove("show");
+      document.removeEventListener("keydown", onKey);
+      setTimeout(function () { backdrop.remove(); }, 250);
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }
+    function onKey(e) { if (e.key === "Escape") close(); }
+    closeBtn.addEventListener("click", close);
+    backdrop.addEventListener("click", function (e) { if (e.target === backdrop) close(); });
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(backdrop);
+    requestAnimationFrame(function () { backdrop.classList.add("show"); closeBtn.focus(); });
+  }
+
   function renderGuide() {
     var K = window.KU || {};
     var adminOn = !!(K.adminOn && K.adminOn());
@@ -927,7 +983,7 @@
     function hook(name, el, kind, idx) { if (K[name]) K[name](el, kind, idx); return el; }
 
     var toolGrid = h("div", { class: "grid grid-3" }, guide.tools.map(function (t, idx) {
-      return hook("onGuideCard", h("div", { class: "card lift tool" + rv }, [
+      var card = h("div", { class: "card lift tool" + rv + (t.detail ? " has-detail" : "") }, [
         h("div", { class: "tool-top" }, [
           iconBubble(t.icon),
           h("div", {}, [
@@ -936,7 +992,18 @@
           ]),
         ]),
         h("p", {}, t.text),
-      ]), "tools", idx);
+        t.detail ? h("span", { class: "tool-more" }, "자세히 보기 · 요금 · 활용법 →") : null,
+      ]);
+      if (t.detail) { // 카드를 누르면 도구 정보 팝업 (관리자 수정·삭제 버튼을 누른 경우는 제외)
+        card.setAttribute("role", "button");
+        card.setAttribute("tabindex", "0");
+        card.setAttribute("aria-label", t.name + " 자세히 보기");
+        card.addEventListener("click", function (e) { if (!e.target.closest(".card-admin")) openTool(t); });
+        card.addEventListener("keydown", function (e) {
+          if ((e.key === "Enter" || e.key === " ") && e.target === card) { e.preventDefault(); openTool(t); }
+        });
+      }
+      return hook("onGuideCard", card, "tools", idx);
     }));
     hook("onGuideGrid", toolGrid, "tools");
 

@@ -323,3 +323,32 @@ a { color: var(--c-blue); }
   .monitor-tips { grid-template-columns: 1fr; }
   .monitor-tip-list { grid-template-columns: 1fr; }
 }
+
+/* 실습 도구: 카드를 누르면 정보 팝업 */
+.tool.has-detail { cursor: pointer; }
+.tool.has-detail:focus-visible { outline: 3px solid var(--c-teal); outline-offset: 3px; }
+.tool-more { display: inline-block; margin-top: 4px; font-size: 13px; font-weight: 700; color: var(--c-pink); }
+.tool.has-detail:hover .tool-more { text-decoration: underline; }
+.modal.tool-modal-box { width: min(720px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; text-align: left; }
+.tool-modal { display: grid; gap: 18px; }
+.tool-modal-head { display: flex; gap: 16px; align-items: center; padding-right: 40px; }
+.tool-modal-head .icon-bubble { flex: none; width: 64px; height: 64px; font-size: 30px; }
+.tool-modal-head h2 { margin: 0; font-size: 26px; font-weight: 800; }
+.tool-modal-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 4px; font-size: 13px; color: var(--navy-soft); }
+.tool-modal-summary { margin: 0; font-size: 16px; line-height: 1.7; color: var(--navy); }
+.tool-modal-links { display: flex; flex-wrap: wrap; gap: 10px; }
+.tool-modal-block h4 { margin: 0 0 10px; font-size: 16px; }
+.price-list { display: grid; gap: 8px; }
+.price-row { display: grid; grid-template-columns: minmax(110px, 0.9fr) minmax(110px, 1fr) minmax(0, 2fr); gap: 12px; align-items: center; padding: 10px 14px; border-radius: 14px; box-shadow: var(--nm-in); }
+.price-row b { font-size: 14.5px; }
+.price-row .price { font-weight: 800; color: var(--c-teal); font-size: 14.5px; }
+.price-row small { font-size: 13px; color: var(--navy-soft); line-height: 1.5; }
+.tool-modal-block .card-note { margin-top: 8px; font-size: 12.5px; }
+.tool-modal-foot { display: grid; grid-template-columns: 1fr 2fr; gap: 12px; }
+@media (max-width: 600px) {
+  .price-row { grid-template-columns: 1fr auto; }
+  .price-row small { grid-column: 1 / -1; }
+  .tool-modal-foot { grid-template-columns: 1fr; }
+  .tool-modal-head h2 { font-size: 22px; }
+}
+.modal.tool-modal-box .tool-modal-links .btn { width: auto; margin: 0; }

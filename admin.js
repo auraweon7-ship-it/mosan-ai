@@ -702,7 +702,8 @@
     var cur = idx >= 0 ? items[idx] : null;
     var close;
     var form = makeForm(def.fields, cur ? "수정 내용 저장" : def.name + " 추가", function (v) {
-      var item = {};
+      // 편집 창에 없는 칸(예: 실습 도구의 detail 팝업 정보)은 그대로 둡니다.
+      var item = cur ? JSON.parse(JSON.stringify(cur)) : {};
       def.fields.forEach(function (f) { item[f.name] = v[f.name]; });
       if (!item.icon) item.icon = "📌";
       if (cur) items[idx] = item; else items.push(item);
