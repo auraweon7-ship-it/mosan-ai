@@ -370,3 +370,18 @@ a { color: var(--c-blue); }
   .card.zoom-box { padding: 20px 16px; }
   .zoom-main .btn-zoom { width: 100%; text-align: center; }
 }
+
+/* 우측 상단 회원가입 버튼 */
+.header-inner .header-signup { order: 2; }
+.header-signup {
+  flex: none; padding: 9px 18px; border-radius: 999px; border: 0; cursor: pointer;
+  font: inherit; font-size: 14px; font-weight: 700; color: var(--navy);
+  background: var(--bg); box-shadow: var(--nm-out-sm); transition: transform 0.2s, box-shadow 0.2s;
+}
+.header-signup:hover { transform: translateY(-2px); }
+.header-signup:active { box-shadow: var(--nm-in); }
+.header-signup[hidden] { display: none; }
+@media (max-width: 600px) { .header-signup { padding: 8px 12px; font-size: 13px; } }
+@media (max-width: 380px) { .header-signup { padding: 8px 10px; } }
+/* 좁은 휴대폰: 버튼이 늘어 제목이 잘리면 로고만 보이게 합니다 */
+@media (max-width: 420px) { .brand-text { display: none; } }

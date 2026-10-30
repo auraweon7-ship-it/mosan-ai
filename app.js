@@ -223,6 +223,10 @@
   // 우측 상단 수강생 로그인 버튼 (로그인하면 이름이 표시됩니다 → renderStudentBar)
   var headerLogin = h("button", { class: "header-login", type: "button" }, "로그인");
   headerLogin.addEventListener("click", function () { openStudent(null); });
+  // 우측 상단 회원가입 버튼 (로그인하면 숨김 → renderStudentBar)
+  var headerSignup = h("button", { class: "header-signup", type: "button" }, "회원가입");
+  headerSignup.addEventListener("click", function () { openSignup(); });
+  document.querySelector(".header-inner").appendChild(headerSignup);
   document.querySelector(".header-inner").appendChild(headerLogin);
 
   var nav = document.getElementById("siteNav");
@@ -1358,29 +1362,86 @@
         h("div", { class: "done-icon", "aria-hidden": "true" }, "✓"),
         h("h4", {}, apply.successTitle),
         h("p", {}, apply.successText),
-        REMOTE ? h("p", { class: "done-meta" }, "관리자가 승인하면 주차별 학습 내용을 볼 수 있습니다. 승인 뒤 화면 오른쪽 위 '로그인'에서 같은 학번·이름으로 로그인해 주세요.") : null,
+        REMOTE ? h("p", { class: "done-meta" }, "관리자가 승인하면 주차별 학습 내용을 볼 수 있습니다. 승인 뒤 화면 오른쪽 위 '로그인'에서 같은 " + idField.label + "·이름으로 로그인해 주세요.") : null,
         h("p", { class: "done-meta" }, saved.name + " (" + saved.studentId + ") · " + fmtStamp(saved.at)),
         again,
       ]));
       return;
     }
     applyBox.appendChild(makeForm(apply.fields, apply.submitLabel, function (values, api) {
-      values.at = Date.now();
-      function done() {
-        store.set("application", values);
-        store.set("applications", store.get("applications", []).concat([values])); // 관리자 화면의 신청 내역
-        renderApply();
-        applyBox.scrollIntoView({ block: "center" });
-      }
-      if (REMOTE) {
-        return call("POST", "applications", { data: values }).then(done)
-          .catch(function (err) { api.error(err.message); });
-      }
-      if (!apply.endpoint) return done();
-      fetch(apply.endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) })
-        .then(function (res) { if (!res.ok) throw new Error(res.status); done(); })
-        .catch(function () { api.error("전송하지 못했습니다. 잠시 뒤 다시 시도해 주세요."); });
+      return submitApplication(values, api, function () { applyBox.scrollIntoView({ block: "center" }); });
     }));
+  }
+  // 수강 신청서(=회원가입) 저장: 아래 신청서와 우측 상단 회원가입 창이 함께 씁니다.
+  function submitApplication(values, api, after) {
+    values.at = Date.now();
+    function done() {
+      store.set("application", values);
+      store.set("applications", store.get("applications", []).concat([values])); // 관리자 화면의 신청 내역
+      renderApply();
+      if (after) after();
+    }
+    if (REMOTE) {
+      return call("POST", "applications", { data: values }).then(done)
+        .catch(function (err) { api.error(err.message); });
+    }
+    if (!apply.endpoint) return done();
+    fetch(apply.endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) })
+      .then(function (res) { if (!res.ok) throw new Error(res.status); done(); })
+      .catch(function () { api.error("전송하지 못했습니다. 잠시 뒤 다시 시도해 주세요."); });
+  }
+  // 로그인 아이디로 쓰는 칸: 신청서의 studentId 칸(지금은 생년월일)을 그대로 따릅니다.
+  var idField = apply.fields.filter(function (f) { return f.name === "studentId"; })[0] || { label: "학번" };
+
+  // 회원가입 창: 수강 신청서와 같은 항목. 가입 → 관리자 승인 → 로그인 순서입니다.
+  function openSignup() {
+    var lastFocus = document.activeElement;
+    var closeBtn = h("button", { class: "modal-close", type: "button", "aria-label": "닫기" }, "×");
+    var body = h("div", { class: "student-modal" });
+    var modal = h("div", { class: "modal modal-form modal-wide", role: "dialog", "aria-modal": "true", "aria-label": "회원가입" }, [closeBtn, body]);
+    var backdrop = h("div", { class: "modal-backdrop" }, [modal]);
+    function close() {
+      backdrop.classList.remove("show");
+      document.removeEventListener("keydown", onKey);
+      setTimeout(function () { backdrop.remove(); }, 250);
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }
+    function onKey(e) { if (e.key === "Escape") close(); }
+    function goLogin() { close(); setTimeout(function () { openStudent(null); }, 260); }
+    function draw() {
+      body.textContent = "";
+      var saved = store.get("application", null);
+      body.appendChild(h("div", { class: "modal-emoji", "aria-hidden": "true" }, saved ? "🎉" : "📝"));
+      body.appendChild(h("h2", {}, saved ? "가입 신청이 접수되었습니다" : "회원가입"));
+      if (saved) {
+        var login = h("button", { class: "btn btn-primary", type: "button" }, "로그인하러 가기");
+        login.addEventListener("click", goLogin);
+        var again = h("button", { class: "modal-link", type: "button" }, "다른 이름으로 다시 가입하기");
+        again.addEventListener("click", function () { store.set("application", null); renderApply(); draw(); });
+        [
+          h("p", { class: "student-modal-lead" }, REMOTE
+            ? "관리자가 승인하면 로그인해서 주차별 학습 내용을 볼 수 있습니다."
+            : "이제 오른쪽 위 '로그인'에서 같은 " + idField.label + "·이름으로 로그인할 수 있습니다."),
+          h("dl", { class: "info-list" }, [infoRow("이름", saved.name), infoRow(idField.label, saved.studentId)]),
+          login, again,
+        ].forEach(function (el) { body.appendChild(el); });
+        return;
+      }
+      body.appendChild(h("p", { class: "student-modal-lead" }, "아래 정보를 적어 가입을 신청해 주세요. 가입 후 " + idField.label + "·이름으로 로그인합니다."));
+      if (!REMOTE && apply.notice) body.appendChild(notice(apply.notice));
+      body.appendChild(makeForm(apply.fields, "가입 신청하기", function (values, api) {
+        return submitApplication(values, api, draw);
+      }));
+      var toLogin = h("button", { class: "modal-link", type: "button" }, "이미 가입했나요? 로그인");
+      toLogin.addEventListener("click", goLogin);
+      body.appendChild(toLogin);
+    }
+    closeBtn.addEventListener("click", close);
+    backdrop.addEventListener("click", function (e) { if (e.target === backdrop) close(); });
+    document.addEventListener("keydown", onKey);
+    draw();
+    document.body.appendChild(backdrop);
+    requestAnimationFrame(function () { backdrop.classList.add("show"); });
   }
 
   var joinEl = section(join, [
@@ -1441,6 +1502,7 @@
   function renderStudentBar() {
     studentBar.textContent = "";
     var me = store.get("session", null);
+    headerSignup.hidden = !!me;
     headerLogin.textContent = me ? "👤 " + me.name : "로그인";
     headerLogin.classList.toggle("on", !!me);
     headerLogin.title = me ? "내 정보·제출 내역·로그아웃" : "수강생 로그인";
@@ -1554,8 +1616,9 @@
     if (!me) {
       head("🔐", "수강생 로그인", w ? w.week + "주차 과제를 제출하려면 먼저 로그인해 주세요." : "로그인하면 출석을 체크하고 과제를 제출할 수 있습니다.");
       box.appendChild(makeForm([
-        { name: "id", label: "학번", type: "text", required: true, placeholder: "숫자 10자리", pattern: "^\\d{10}$", patternMsg: "학번은 숫자 10자리로 입력해 주세요." },
-        { name: "name", label: "이름", type: "text", required: true, placeholder: "홍길동", hint: "수강 신청서에 적은 학번과 이름을 입력하세요." },
+        // 아이디 칸은 회원가입(신청서)의 studentId 칸과 같은 이름·형식을 씁니다.
+        { name: "id", label: idField.label, type: "text", required: true, placeholder: idField.placeholder || "", pattern: idField.pattern, patternMsg: idField.patternMsg },
+        { name: "name", label: "이름", type: "text", required: true, placeholder: "홍길동", hint: "회원가입 때 적은 " + idField.label + "·이름을 입력하세요." },
       ], "로그인", function (values, api) {
         if (REMOTE) { // 서버가 명단(수강 신청자)에 있는 학번·이름인지 확인합니다.
           return call("POST", "student/login", { id: values.id, name: values.name })
@@ -1589,7 +1652,7 @@
 
     var prof = me.profile || {};
     var person = h("dl", { class: "info-list" }, [
-      infoRow("이름", me.name), infoRow("학번", me.id),
+      infoRow("이름", me.name), infoRow(idField.label, me.id),
       prof.department ? infoRow("학과", prof.department) : null,
       prof.grade ? infoRow("학년", prof.grade) : null,
       prof.email ? infoRow("이메일", prof.email) : null,
