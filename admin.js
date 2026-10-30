@@ -1868,8 +1868,194 @@
     ];
   }
 
+  /* ── 탭: 회원 관리 ──
+   * 회원가입한 사람을 찾아보고, 정보 수정·비밀번호 초기화·승인·삭제를 합니다.
+   * 서버에 연결되어 있으면 서버(DB)의 회원을, 아니면 이 브라우저에서 가입한 회원을 다룹니다. */
+  var memberQuery = "", memberFilter = "all", memberMsg = "";
+  var memberRows = null, memberFresh = false;
+  function loadMembers() {
+    if (!REMOTE) return Promise.resolve();
+    return adminCall("GET", "admin/roster").then(function (res) {
+      memberRows = res.roster; memberFresh = true;
+      if (current === "members" && panel && panel.parentNode) showTab("members");
+    }, function () {});
+  }
+  // 회원 목록을 같은 모양으로: { id, name, birth, phone, email, department, grade, at, approved, hasPassword, attendance, submissions }
+  function memberList() {
+    if (REMOTE) return memberRows;
+    var att = store.get("attendance", {});
+    var seen = {};
+    // 같은 아이디로 여러 번 저장됐으면 마지막 기록을 씁니다.
+    store.get("applications", []).forEach(function (a) { if (a.studentId) seen[a.studentId] = a; });
+    return Object.keys(seen).map(function (id) {
+      var a = seen[id];
+      return {
+        id: id, name: a.name, birth: a.birth || "", phone: a.phone || "", email: a.email || "", department: a.department || "", grade: a.grade || "",
+        at: a.at, approved: true, hasPassword: !!a.pwHash, attendance: Object.keys(att[id] || {}).length, submissions: ((store.get("submissions", {})[id]) || []).length,
+      };
+    });
+  }
+  // 이 브라우저의 가입 기록 고치기 (서버 없이 쓸 때)
+  function updateLocalMember(id, fn) {
+    var apps = store.get("applications", []);
+    apps.forEach(function (a) { if (a.studentId === id) fn(a); });
+    store.set("applications", apps.filter(function (a) { return !a._delete; }));
+  }
+  function fmtBirth(b) { return /^\d{8}$/.test(b || "") ? b.slice(0, 4) + "." + b.slice(4, 6) + "." + b.slice(6) : (b || "—"); }
+  function memberDone(msg) { memberMsg = msg; if (REMOTE) loadMembers(); else showTab("members"); }
+
+  // 회원 상세·수정 창
+  function memberDialog(m) {
+    var saved = false; // 정보 저장으로 닫히면 목록은 저장 쪽에서 다시 그립니다.
+    var grades = (C.participate.apply.fields.filter(function (f) { return f.name === "grade"; })[0] || {}).options || [];
+    var form = makeForm([
+      { name: "name", label: "이름", type: "text", required: true },
+      { name: "birth", label: "생년월일", type: "text", required: false, placeholder: "예) 19600315", pattern: "^(\\d{8})?$", patternMsg: "숫자 8자리로 입력해 주세요." },
+      { name: "phone", label: "연락처", type: "tel", required: false },
+      { name: "email", label: "이메일", type: "email", required: false },
+      { name: "department", label: "이전 직업·경력", type: "text", required: false },
+      grades.length ? { name: "grade", label: "AI 사용 경험", type: "select", required: false, options: grades } : { name: "grade", label: "AI 사용 경험", type: "text", required: false },
+    ], "정보 저장", function (v, api) {
+      if (REMOTE) {
+        return adminCall("PUT", "admin/roster/" + encodeURIComponent(m.id), v).then(function () {
+          saved = true; close(); memberDone(v.name + "님의 정보를 고쳤습니다." + (v.name !== m.name ? " (이름을 바꿨으니 회원은 다시 로그인해야 합니다)" : ""));
+        }, function (err) { api.error(err.message); });
+      }
+      updateLocalMember(m.id, function (a) { Object.keys(v).forEach(function (k) { a[k] = v[k]; }); });
+      saved = true; close(); memberDone(v.name + "님의 정보를 고쳤습니다.");
+    });
+    ["name", "birth", "phone", "email", "department", "grade"].forEach(function (k) { form.setValue(k, m[k] || ""); });
+
+    // 비밀번호 초기화: 새 비밀번호를 정해 회원에게 알려 줍니다.
+    var pwInput = h("input", { type: "text", class: "mem-pw-input", placeholder: "새 비밀번호 (8자 이상)", "aria-label": "새 비밀번호" });
+    var gen = button("자동 만들기", "ad-mini", function () {
+      var chars = "abcdefghjkmnpqrstuvwxyz23456789";
+      var s = ""; for (var i = 0; i < 8; i++) s += chars.charAt(Math.floor(Math.random() * chars.length));
+      pwInput.value = s;
+    });
+    var pwMsg = h("p", { class: "field-hint", role: "status" });
+    var setPw = button("비밀번호 바꾸기", "btn btn-ghost btn-sm", function () {
+      var pw = pwInput.value.trim();
+      if (pw.length < 8) { pwMsg.textContent = "8자 이상으로 입력해 주세요."; return; }
+      function ok() { pwMsg.textContent = "✓ 바꿨습니다. 새 비밀번호 '" + pw + "'를 회원에게 알려 주세요. (이 창을 닫으면 다시 볼 수 없습니다)"; }
+      if (REMOTE) return adminCall("POST", "admin/roster/" + encodeURIComponent(m.id) + "/password", { password: pw }).then(ok, function () {});
+      updateLocalMember(m.id, function (a) { a.pwHash = KU.sha256("kucourse|pw|" + m.id + "|" + pw); });
+      ok();
+    });
+
+    var info = h("dl", { class: "mem-info" }, [
+      ["아이디", m.id], ["가입일", stamp(m.at) || "—"], ["상태", REMOTE ? (m.approved ? "승인됨" : "승인 대기") : "—"],
+      ["비밀번호", m.hasPassword ? "설정됨" : "없음 (관리자 등록)"], ["출석", m.attendance + " / " + KU.weeks.length + "회"], ["과제 제출", m.submissions + "건"],
+    ].map(function (x) { return h("div", {}, [h("dt", {}, x[0]), h("dd", {}, x[1])]); }));
+
+    var close = dialog(m.name + " 회원", "", h("div", { class: "mem-dialog" }, [
+      info,
+      h("h4", { class: "mem-sub" }, "✏️ 회원 정보 수정"), form,
+      h("h4", { class: "mem-sub" }, "🔑 비밀번호 초기화"),
+      h("p", { class: "field-hint" }, "회원이 비밀번호를 잊었을 때 새 비밀번호를 정해 알려 주세요. 기존 비밀번호는 더 이상 쓸 수 없습니다."),
+      h("div", { class: "mem-pw-row" }, [pwInput, gen, setPw]), pwMsg,
+    ]), "👤", function () { if (!saved) memberDone(""); });
+  }
+
+  function tabMembers() {
+    if (REMOTE && !memberFresh) {
+      loadMembers();
+      if (!memberRows) return [h("p", { class: "cal-empty" }, "서버에서 회원 목록을 불러오는 중입니다…")];
+    }
+    memberFresh = false; // 다음에 탭을 열면 다시 받아 옵니다.
+    var all = memberList() || [];
+    var msg = memberMsg; memberMsg = "";
+    var month = new Date(); month = new Date(month.getFullYear(), month.getMonth(), 1).getTime();
+    var approvedN = all.filter(function (m) { return m.approved; }).length;
+
+    var q = memberQuery.trim().toLowerCase();
+    var rows = all.filter(function (m) {
+      if (memberFilter === "approved" && !m.approved) return false;
+      if (memberFilter === "waiting" && m.approved) return false;
+      if (memberFilter === "nopw" && m.hasPassword) return false;
+      if (!q) return true;
+      return [m.id, m.name, m.email, m.phone, m.department].some(function (x) { return String(x || "").toLowerCase().indexOf(q) >= 0; });
+    }).sort(function (a, b) { return (b.at || 0) - (a.at || 0); }); // 최근 가입이 위로
+
+    var search = h("input", { type: "search", class: "mem-search", placeholder: "이름·아이디·이메일·연락처로 찾기", value: memberQuery, "aria-label": "회원 검색" });
+    search.addEventListener("input", function () {
+      memberQuery = search.value;
+      memberFresh = true; showTab("members");
+      var again = body.querySelector(".mem-search");
+      if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
+    });
+    var filters = h("div", { class: "ad-subtabs" }, [
+      ["all", "전체 " + all.length], ["approved", "승인됨 " + approvedN], ["waiting", "승인 대기 " + (all.length - approvedN)],
+      ["nopw", "비밀번호 없음 " + all.filter(function (m) { return !m.hasPassword; }).length],
+    ].filter(function (f) { return REMOTE || (f[0] !== "approved" && f[0] !== "waiting"); }).map(function (f) {
+      return button(f[1], "ad-subtab" + (memberFilter === f[0] ? " active" : ""), function () { memberFilter = f[0]; memberFresh = true; showTab("members"); });
+    }));
+
+    function approve(m, on) {
+      adminCall("POST", "admin/roster/" + encodeURIComponent(m.id) + "/approve", { approved: on }).then(function () {
+        memberDone(m.name + (on ? "님을 승인했습니다." : "님의 승인을 취소했습니다."));
+      }, function () {});
+    }
+    function remove(m) {
+      if (REMOTE) {
+        return adminCall("DELETE", "admin/roster/" + encodeURIComponent(m.id)).then(function () { memberDone(m.name + "님을 삭제했습니다."); }, function () {});
+      }
+      updateLocalMember(m.id, function (a) { a._delete = true; });
+      memberDone(m.name + "님을 삭제했습니다.");
+    }
+    var head = ["아이디", "이름", "생년월일", "연락처", "이메일", "AI 경험", "가입일"].concat(REMOTE ? ["상태"] : []).concat(["출석", "관리"]);
+    var csvHead = ["아이디", "이름", "생년월일", "연락처", "이메일", "이전 직업·경력", "AI 사용 경험", "가입일", "상태", "비밀번호", "출석", "과제 제출"];
+
+    return [
+      note(REMOTE ? "회원가입한 사람의 목록입니다. 이름을 누르면 상세 정보를 보고 정보 수정·비밀번호 초기화를 할 수 있습니다. 승인된 회원만 주차별 학습 내용을 보고 출석·과제 제출을 할 수 있습니다."
+        : "서버에 연결되어 있지 않아 이 브라우저에서 가입한 회원만 보입니다. 서버를 연결하면 모든 회원을 관리할 수 있습니다."),
+      msg ? h("p", { class: "also-done", role: "status" }, msg) : null,
+      h("div", { class: "grid grid-4 mem-stats" }, [
+        ["👥", "전체 회원", all.length + "명"], ["✅", "승인됨", REMOTE ? approvedN + "명" : "—"],
+        ["⏳", "승인 대기", REMOTE ? (all.length - approvedN) + "명" : "—"],
+        ["🆕", "이번 달 가입", all.filter(function (m) { return (m.at || 0) >= month; }).length + "명"],
+      ].map(function (s) { return h("div", { class: "card ad-card mem-stat" }, [h("span", { "aria-hidden": "true" }, s[0]), h("small", {}, s[1]), h("b", {}, s[2])]); })),
+      h("div", { class: "card ad-card" }, [
+        h("div", { class: "ad-row between" }, [
+          h("h4", {}, "👤 회원 목록 (" + rows.length + "명)"),
+          h("span", { class: "ad-row" }, [
+            REMOTE ? button("새로 고침", "btn btn-ghost btn-sm", function () { loadMembers(); }) : null,
+            button("엑셀용 파일(CSV) 내려받기", "btn btn-ghost btn-sm", function () {
+              download("회원_목록.csv", toCsv(csvHead, rows.map(function (m) {
+                return [m.id, m.name, fmtBirth(m.birth), m.phone, m.email, m.department, m.grade, stamp(m.at), REMOTE ? (m.approved ? "승인됨" : "승인 대기") : "",
+                  m.hasPassword ? "설정됨" : "없음", m.attendance + "/" + KU.weeks.length, m.submissions];
+              })), "text/csv");
+            }),
+          ]),
+        ]),
+        h("div", { class: "mem-tools" }, [search, filters]),
+        rows.length ? h("div", { class: "ad-table-wrap" }, [
+          h("table", { class: "ad-table mem-table" }, [
+            h("thead", {}, [h("tr", {}, head.map(function (x) { return h("th", {}, x); }))]),
+            h("tbody", {}, rows.map(function (m) {
+              var nameBtn = button(m.name || "(이름 없음)", "mem-name", function () { memberDialog(m); });
+              return h("tr", {}, [
+                h("td", {}, [h("code", {}, m.id)]),
+                h("td", {}, [nameBtn, m.hasPassword ? null : h("span", { class: "tag", title: "관리자가 등록해 비밀번호가 아직 없습니다" }, "비번 없음")]),
+                h("td", {}, fmtBirth(m.birth)), h("td", {}, m.phone || "—"), h("td", {}, m.email || "—"), h("td", {}, m.grade || "—"),
+                h("td", {}, stamp(m.at) || "—"),
+              ].concat(REMOTE ? [h("td", {}, [h("span", { class: "tag" + (m.approved ? " tag-assign" : "") }, m.approved ? "승인됨" : "승인 대기")])] : []).concat([
+                h("td", {}, m.attendance + "회"),
+                h("td", { class: "mem-actions" }, [
+                  button("상세·수정", "ad-mini", function () { memberDialog(m); }),
+                  REMOTE ? (m.approved ? button("승인 취소", "ad-mini", function () { approve(m, false); }) : button("✔ 승인", "ad-mini approve", function () { approve(m, true); })) : null,
+                  deleteButton(function () { remove(m); }),
+                ]),
+              ]));
+            })),
+          ]),
+        ]) : h("p", { class: "cal-empty" }, all.length ? "조건에 맞는 회원이 없습니다." : "아직 회원가입한 사람이 없습니다. 오른쪽 위 '회원가입'으로 가입하면 여기에 나타납니다."),
+      ]),
+    ];
+  }
+
   /* ── 관리자 화면 틀 ── */
-  var TABS = [["edit", "내용 편집", tabEdit], ["popups", "팝업", tabPopups], ["roster", "강의 관리", tabManage],
+  var TABS = [["edit", "내용 편집", tabEdit], ["popups", "팝업", tabPopups], ["members", "회원 관리", tabMembers], ["roster", "강의 관리", tabManage],
     ["records", "내역 확인", tabRecords], ["security", "설정 파일·보안", tabSecurity]];
   var panel, body, status, saveBtn, tabBar, current = "edit";
   var editSection = ""; // '내용 편집' 탭에서 열어 둘 영역

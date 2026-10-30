@@ -466,7 +466,7 @@ api.post("/admin/poll/clear", needDb, needAdmin, wrap(async function (req, res) 
 
 /* 수강생 명단 */
 api.get("/admin/roster", needDb, needAdmin, wrap(async function (req, res) {
-  const r = await pool.query("SELECT student_id, name, department, grade, email, phone, source, created_at, approved FROM roster ORDER BY created_at, student_id");
+  const r = await pool.query("SELECT student_id, name, department, grade, email, phone, source, created_at, approved, birth, pw_hash FROM roster ORDER BY created_at, student_id");
   const att = await pool.query("SELECT student_id, COUNT(*) AS n FROM attendance GROUP BY student_id");
   const sub = await pool.query("SELECT student_id, COUNT(*) AS n FROM submissions GROUP BY student_id");
   const attN = {}, subN = {};
@@ -477,6 +477,7 @@ api.get("/admin/roster", needDb, needAdmin, wrap(async function (req, res) {
       return {
         id: x.student_id, name: x.name, department: x.department, grade: x.grade, email: x.email, phone: x.phone,
         source: x.source, at: Number(x.created_at), approved: !!x.approved, attendance: attN[x.student_id] || 0, submissions: subN[x.student_id] || 0,
+        birth: x.birth || "", hasPassword: !!x.pw_hash, // 비밀번호 지문 자체는 보내지 않습니다.
       };
     }),
   });
@@ -490,6 +491,25 @@ api.post("/admin/roster", needDb, needAdmin, wrap(async function (req, res) {
     if (!exists && (await enroll(st || {}, "admin"))) added++; else skipped++;
   }
   res.json({ added: added, skipped: skipped });
+}));
+// 회원 관리: 회원 정보 고치기 (아이디는 바꾸지 않습니다)
+api.put("/admin/roster/:id", needDb, needAdmin, wrap(async function (req, res) {
+  const id = normId(req.params.id), b = req.body || {};
+  const name = str(b.name, 40).trim();
+  if (!name) return res.status(400).json({ error: "이름을 입력해 주세요.", field: "name" });
+  const r = await pool.query(
+    "UPDATE roster SET name = $1, birth = $2, phone = $3, email = $4, department = $5, grade = $6 WHERE student_id = $7",
+    [name, str(b.birth, 8), str(b.phone, 30), str(b.email, 120), str(b.department, 60), str(b.grade, 20), id]);
+  if (!r.rowCount) return res.status(404).json({ error: "없는 회원입니다." });
+  res.json({ ok: true });
+}));
+// 회원 관리: 비밀번호 초기화 (관리자가 새 비밀번호를 정해 회원에게 알려 줍니다)
+api.post("/admin/roster/:id/password", needDb, needAdmin, wrap(async function (req, res) {
+  const pw = str(req.body && req.body.password, 200);
+  if (pw.length < 8) return res.status(400).json({ error: "새 비밀번호는 8자 이상으로 입력해 주세요.", field: "password" });
+  const r = await pool.query("UPDATE roster SET pw_hash = $1 WHERE student_id = $2", [hashPw(pw), normId(req.params.id)]);
+  if (!r.rowCount) return res.status(404).json({ error: "없는 회원입니다." });
+  res.json({ ok: true });
 }));
 // 승인 / 승인 취소
 api.post("/admin/roster/:id/approve", needDb, needAdmin, wrap(async function (req, res) {

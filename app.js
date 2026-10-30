@@ -355,7 +355,11 @@
         }))),
         h("div", { class: "ig-arrow", "aria-hidden": "true" }, "➜"),
         block(ig.outputsTitle, h("ul", { class: "ig-outputs" }, ig.outputs.map(function (x) {
-          return h("li", {}, [h("span", { class: "ig-icon", "aria-hidden": "true" }, x.icon), h("b", {}, x.label)]);
+          return h("li", {}, [
+            h("span", { class: "ig-icon", "aria-hidden": "true" }, x.icon),
+            h("div", { class: "ig-out-text" }, [h("b", {}, x.label), x.text ? h("span", {}, x.text) : null]),
+            x.week ? h("em", { class: "ig-out-week" }, x.week) : null,
+          ]);
         }))),
       ]),
 

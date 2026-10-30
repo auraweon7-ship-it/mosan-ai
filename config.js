@@ -152,9 +152,9 @@ window.SITE_CONFIG = {
       ],
       outputsTitle: "만드는 것",
       outputs: [
-        { icon: "📚", label: "프롬프트 라이브러리" },
-        { icon: "🎬", label: "콘텐츠 포트폴리오" },
-        { icon: "🌐", label: "나만의 AI 웹앱" },
+        { icon: "📚", label: "프롬프트 라이브러리", text: "검증한 나만의 프롬프트 20개", week: "16주차" },
+        { icon: "🎬", label: "콘텐츠 포트폴리오", text: "글·이미지·음성·영상 작품 모음", week: "26주차" },
+        { icon: "🌐", label: "나만의 AI 웹앱", text: "직접 만들어 인터넷에 공개", week: "52주차" },
       ],
       stepsTitle: "한 회 수업의 흐름 (120분)",
       steps: [

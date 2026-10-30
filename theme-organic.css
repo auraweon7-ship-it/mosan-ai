@@ -473,3 +473,69 @@ a { color: var(--c-blue); }
 .cert-bar { display: flex; align-items: center; gap: 14px; padding-right: 44px; }
 .modal.cert-modal .cert-bar .btn { width: auto; margin: 0; }
 .cert-frame { flex: 1; width: 100%; border: 0; border-radius: 16px; background: #eceff4; box-shadow: var(--nm-in); }
+
+/* ── 관리자: 회원 관리 ── */
+.mem-stats { gap: 14px; margin-bottom: 14px; }
+.card.mem-stat { display: grid; gap: 2px; padding: 16px 18px; }
+.mem-stat span { font-size: 20px; }
+.mem-stat small { color: var(--navy-soft); font-weight: 700; font-size: 13px; }
+.mem-stat b { font-size: 22px; font-weight: 800; }
+.mem-tools { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 12px 0; }
+.mem-search { flex: 1; min-width: 220px; padding: 10px 14px; border-radius: 12px; border: 0; box-shadow: var(--nm-in); background: var(--bg); font: inherit; font-size: 15px; color: var(--navy); }
+.mem-search:focus { outline: 2px solid var(--c-teal); outline-offset: 2px; }
+.mem-table td { vertical-align: middle; }
+.mem-table code { font-size: 13px; background: var(--bg-deep); padding: 2px 6px; border-radius: 6px; }
+.mem-name { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--c-blue); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; margin-right: 6px; }
+.mem-actions { white-space: nowrap; }
+.mem-actions .ad-mini + .ad-mini, .mem-actions .ad-mini + button { margin-left: 4px; }
+.mem-dialog { display: grid; gap: 12px; text-align: left; }
+.mem-info { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.mem-info div { padding: 8px 12px; border-radius: 12px; box-shadow: var(--nm-in); }
+.mem-info dt { font-size: 12px; color: var(--navy-soft); font-weight: 700; }
+.mem-info dd { margin: 0; font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+.mem-sub { margin: 10px 0 0; font-size: 16px; }
+.mem-dialog .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mem-pw-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.mem-pw-input { flex: 1; min-width: 160px; padding: 10px 12px; border-radius: 12px; border: 0; box-shadow: var(--nm-in); background: var(--bg); font: inherit; font-size: 15px; color: var(--navy); font-family: Consolas, "D2Coding", monospace; }
+.modal .mem-pw-row .btn { width: auto; margin: 0; }
+@media (max-width: 640px) {
+  .mem-info { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mem-dialog .form-grid { grid-template-columns: 1fr; }
+}
+
+/* ── 인포그래픽 '만드는 것' 카드 (v2) ──
+ * 늘어난 물방울 모양 대신, 바탕색 카드 + 왼쪽 색 띠 + 색 아이콘 + 설명 + 주차 배지 */
+.ig-outputs { gap: 14px; }
+.ig-outputs li:nth-child(3n+1) { --oc: #e2457a; --og: var(--g-pink); }
+.ig-outputs li:nth-child(3n+2) { --oc: #f39324; --og: var(--g-orange); }
+.ig-outputs li:nth-child(3n+3) { --oc: #1a9c86; --og: var(--g-teal); }
+.ig-outputs li {
+  position: relative; overflow: hidden; display: flex; align-items: center; gap: 14px;
+  padding: 14px 16px 14px 20px; border-radius: 20px;
+  background: var(--bg); color: var(--navy); box-shadow: var(--nm-out-sm);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.ig-outputs li::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--og); }
+.ig-outputs li:hover { transform: translateX(4px); box-shadow: var(--nm-out); }
+.ig-outputs li .ig-icon {
+  width: 52px; height: 52px; font-size: 25px; border-radius: var(--blob);
+  background: var(--og); box-shadow: 0 8px 18px color-mix(in srgb, var(--oc) 32%, transparent);
+}
+.ig-outputs li:nth-child(even) .ig-icon { border-radius: var(--blob-2); }
+.ig-out-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.ig-out-text b { font-size: 16px; font-weight: 800; line-height: 1.35; }
+.ig-out-text span { font-size: 13px; color: var(--navy-soft); line-height: 1.45; }
+.ig-out-week {
+  flex: none; font-style: normal; font-size: 12px; font-weight: 800; padding: 4px 10px; border-radius: 999px;
+  color: var(--oc); background: color-mix(in srgb, var(--oc) 12%, #fff);
+}
+@media (max-width: 900px) {
+  .ig-outputs li { flex-direction: column; text-align: center; padding: 18px 10px 14px; gap: 8px; }
+  .ig-outputs li::before { left: 0; right: 0; top: 0; bottom: auto; width: auto; height: 5px; }
+  .ig-outputs li:hover { transform: translateY(-3px); }
+}
+@media (max-width: 520px) {
+  .ig-outputs { grid-template-columns: 1fr; }
+  .ig-outputs li { flex-direction: row; text-align: left; padding: 14px 16px 14px 20px; }
+  .ig-outputs li::before { right: auto; bottom: 0; width: 6px; height: auto; }
+}
