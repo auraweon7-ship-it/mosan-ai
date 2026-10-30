@@ -62,6 +62,9 @@ async function initDb() {
   try { await pool.query("ALTER TABLE submissions ADD COLUMN IF NOT EXISTS drive_url TEXT NOT NULL DEFAULT ''"); } catch (e) { console.warn("drive_url 열 추가 건너뜀:", e.message); }
   // 승인 기능이 생기기 전에 만든 명단 표에는 승인 열을 덧붙입니다(이미 있으면 그대로).
   try { await pool.query("ALTER TABLE roster ADD COLUMN IF NOT EXISTS approved BOOLEAN NOT NULL DEFAULT FALSE"); } catch (e) { /* 이미 있음 */ }
+  // 아이디·비밀번호 로그인: 비밀번호 지문(scrypt)과 생년월일 열
+  try { await pool.query("ALTER TABLE roster ADD COLUMN IF NOT EXISTS pw_hash TEXT NOT NULL DEFAULT ''"); } catch (e) { /* 이미 있음 */ }
+  try { await pool.query("ALTER TABLE roster ADD COLUMN IF NOT EXISTS birth TEXT NOT NULL DEFAULT ''"); } catch (e) { /* 이미 있음 */ }
 
   // 명단 기능이 생기기 전에 들어온 신청서를 한 번만 명단으로 옮깁니다.
   if (!process.env.SESSION_SECRET) {
@@ -95,17 +98,31 @@ async function initDb() {
   }
 }
 
-// 로그인 아이디 형식: 숫자 6~12자리 (신청서의 studentId 칸 — 지금은 생년월일 8자리)
-const ID_RE = /^\d{6,12}$/;
+// 로그인 아이디 형식: 영문·숫자·밑줄 4~20자 (소문자로 통일해 저장)
+const ID_RE = /^[a-z0-9_]{4,20}$/;
+function normId(v) { return str(v, 40).trim().toLowerCase(); }
+
+// 비밀번호는 원문 대신 scrypt 지문으로만 저장합니다. 형식: scrypt$소금$지문
+function hashPw(pw) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  return "scrypt$" + salt + "$" + crypto.scryptSync(String(pw), salt, 32).toString("hex");
+}
+function checkPw(pw, stored) {
+  const p = String(stored || "").split("$");
+  if (p.length !== 3 || p[0] !== "scrypt") return false;
+  return same(crypto.scryptSync(String(pw), p[1], 32).toString("hex"), p[2]);
+}
 
 // 수강생 명단에 넣기(이미 있으면 정보만 고침). 아이디·이름이 맞지 않으면 false
-async function enroll(d, source, at) {
-  const id = str(d.studentId || d.id, 20).trim(), name = str(d.name, 40).trim();
+// pwHash를 주면 비밀번호도 저장합니다(회원가입).
+async function enroll(d, source, at, pwHash) {
+  const id = normId(d.studentId || d.id), name = str(d.name, 40).trim();
   if (!ID_RE.test(id) || !name) return false;
   await pool.query(
-    "INSERT INTO roster (student_id, name, department, grade, email, phone, source, created_at, approved) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) " +
-    "ON CONFLICT (student_id) DO UPDATE SET name = EXCLUDED.name, department = EXCLUDED.department, grade = EXCLUDED.grade, email = EXCLUDED.email, phone = EXCLUDED.phone",
-    [id, name, str(d.department, 60), str(d.grade, 20), str(d.email, 120), str(d.phone, 30), source, at || Date.now(), source === "admin"]);
+    "INSERT INTO roster (student_id, name, department, grade, email, phone, source, created_at, approved, pw_hash, birth) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) " +
+    "ON CONFLICT (student_id) DO UPDATE SET name = EXCLUDED.name, department = EXCLUDED.department, grade = EXCLUDED.grade, email = EXCLUDED.email, phone = EXCLUDED.phone, " +
+    "birth = EXCLUDED.birth, pw_hash = CASE WHEN EXCLUDED.pw_hash <> '' THEN EXCLUDED.pw_hash ELSE roster.pw_hash END",
+    [id, name, str(d.department, 60), str(d.grade, 20), str(d.email, 120), str(d.phone, 30), source, at || Date.now(), source === "admin", pwHash || "", str(d.birth, 8)]);
   return true;
 }
 
@@ -291,13 +308,26 @@ api.post("/poll/vote", needDb, wrap(async function (req, res) {
 }));
 
 /* 수강 신청서 */
+// 회원가입(수강 신청서): 아이디 중복을 확인하고 비밀번호는 지문으로만 저장합니다.
 api.post("/applications", needDb, wrap(async function (req, res) {
   const data = req.body && req.body.data;
   if (!data || typeof data !== "object") return res.status(400).json({ error: "신청서 내용이 없습니다." });
-  const text = JSON.stringify(data);
+  const id = normId(data.studentId), name = str(data.name, 40).trim(), pw = str(data.password, 200);
+  if (!ID_RE.test(id)) return res.status(400).json({ error: "아이디는 영문·숫자 4~20자로 입력해 주세요.", field: "studentId" });
+  if (!name) return res.status(400).json({ error: "이름을 입력해 주세요.", field: "name" });
+  if (pw.length < 8) return res.status(400).json({ error: "비밀번호는 8자 이상으로 입력해 주세요.", field: "password" });
+  if (tooMany(req)) return res.status(429).json({ error: "여러 번 시도했습니다. 잠시 뒤 다시 해 주세요." });
+  // 이미 비밀번호가 있는 아이디는 쓸 수 없습니다. (관리자가 비밀번호 없이 미리 등록한 사람은 이름이 같으면 가입 가능)
+  const row = await pool.query("SELECT name, pw_hash FROM roster WHERE student_id = $1", [id]);
+  if (row.rows.length && (row.rows[0].pw_hash || row.rows[0].name !== name)) {
+    return res.status(409).json({ error: "이미 사용 중인 아이디입니다. 다른 아이디를 입력해 주세요.", field: "studentId" });
+  }
+  const clean = Object.assign({}, data, { studentId: id });
+  delete clean.password; delete clean.password2; // 신청 내역에는 비밀번호를 남기지 않습니다.
+  const text = JSON.stringify(clean);
   if (text.length > 20000) return res.status(400).json({ error: "내용이 너무 깁니다." });
   await pool.query("INSERT INTO applications (data, created_at) VALUES ($1, $2)", [text, Date.now()]);
-  const enrolled = await enroll(data, "apply"); // 수강생 명단에 자동 등록
+  const enrolled = await enroll(clean, "apply", Date.now(), hashPw(pw)); // 수강생 명단에 자동 등록
   res.json({ ok: true, enrolled: enrolled });
 }));
 
@@ -305,20 +335,17 @@ api.post("/applications", needDb, wrap(async function (req, res) {
 api.post("/student/login", needDb, wrap(async function (req, res) {
   if (tooMany(req)) return res.status(429).json({ error: "여러 번 시도했습니다. 잠시 뒤 다시 해 주세요." });
   const cfg = await effectiveConfig();
-  const room = cfg.classroom || {};
-  const id = str(req.body.id, 20).trim(), name = str(req.body.name, 40).trim();
-  if (!ID_RE.test(id) || !name) return res.status(400).json({ error: "생년월일(숫자)과 이름을 확인해 주세요.", field: "id" });
-  // 학번과 이름만으로 로그인합니다(수강 코드는 쓰지 않습니다).
-  // 수강 신청서를 내서 명단에 있는 학번·이름만 로그인할 수 있습니다.
-  const hashes = room.rosterHashes || [];
-  const row = await pool.query("SELECT name FROM roster WHERE student_id = $1", [id]);
-  const inTable = row.rows.length && row.rows[0].name === name;
-  if (!inTable && hashes.indexOf(rosterHash(id, name)) < 0) {
-    return res.status(403).json({ error: "가입되지 않은 생년월일·이름입니다. 회원가입을 먼저 해 주세요.", field: "id" });
+  // 회원가입 때 만든 아이디·비밀번호로 로그인합니다.
+  const id = normId(req.body.id), pw = str(req.body.password, 200);
+  if (!ID_RE.test(id) || !pw) return res.status(400).json({ error: "아이디와 비밀번호를 확인해 주세요.", field: "id" });
+  const row = await pool.query("SELECT name, pw_hash, birth FROM roster WHERE student_id = $1", [id]);
+  const r = row.rows[0];
+  if (!r || !checkPw(pw, r.pw_hash)) {
+    return res.status(403).json({ error: "아이디 또는 비밀번호가 맞지 않습니다.", field: "password" });
   }
   res.json({
-    token: sign({ role: "student", id: id, name: name, exp: Date.now() + 30 * DAY }), id: id, name: name,
-    approved: await isApproved(id, name, cfg),
+    token: sign({ role: "student", id: id, name: r.name, exp: Date.now() + 30 * DAY }), id: id, name: r.name,
+    approved: await isApproved(id, r.name, cfg), profile: { birth: r.birth },
   });
 }));
 
@@ -338,8 +365,8 @@ api.get("/me", needDb, needStudent, wrap(async function (req, res) {
   const out = await myRecords(req.student.id);
   out.approved = await isApproved(req.student.id, req.student.name, await effectiveConfig());
   // 과제 제출 창에 보여 줄 내 인적사항(수강 신청서에 적은 내용)
-  const me = await pool.query("SELECT department, grade, email FROM roster WHERE student_id = $1", [req.student.id]);
-  if (me.rows.length) out.profile = { department: me.rows[0].department, grade: me.rows[0].grade, email: me.rows[0].email };
+  const me = await pool.query("SELECT department, grade, email, birth FROM roster WHERE student_id = $1", [req.student.id]);
+  if (me.rows.length) out.profile = { department: me.rows[0].department, grade: me.rows[0].grade, email: me.rows[0].email, birth: me.rows[0].birth };
   res.json(out);
 }));
 // 출석·과제 제출은 승인된 수강생만
@@ -458,7 +485,7 @@ api.post("/admin/roster", needDb, needAdmin, wrap(async function (req, res) {
   const list = Array.isArray(req.body.students) ? req.body.students.slice(0, 1000) : [];
   let added = 0, skipped = 0;
   for (const st of list) {
-    const id = str(st && st.id, 20).trim();
+    const id = normId(st && st.id);
     const exists = ID_RE.test(id) && (await pool.query("SELECT 1 FROM roster WHERE student_id = $1", [id])).rows.length;
     if (!exists && (await enroll(st || {}, "admin"))) added++; else skipped++;
   }

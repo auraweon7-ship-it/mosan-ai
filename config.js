@@ -659,7 +659,11 @@ window.SITE_CONFIG = {
       successText: "작성해 주셔서 고맙습니다. 확인 후 연락드리겠습니다.",
       fields: [
         { name: "name", label: "이름", type: "text", required: true, placeholder: "홍길동" },
-        { name: "studentId", label: "생년월일", type: "text", required: true, placeholder: "예) 19600315 (숫자 8자리)", pattern: "^\\d{8}$", patternMsg: "생년월일은 숫자 8자리로 입력해 주세요." },
+        // studentId = 로그인 아이디, password·password2 = 비밀번호(저장할 때 지문(해시)으로 바뀌어 원문은 남지 않습니다)
+        { name: "studentId", label: "아이디", type: "text", required: true, placeholder: "영문·숫자 4~20자", pattern: "^[A-Za-z0-9_]{4,20}$", patternMsg: "아이디는 영문·숫자 4~20자로 입력해 주세요.", hint: "로그인할 때 쓰는 아이디입니다." },
+        { name: "password", label: "비밀번호", type: "password", required: true, placeholder: "8자 이상", pattern: "^.{8,64}$", patternMsg: "비밀번호는 8자 이상으로 입력해 주세요." },
+        { name: "password2", label: "비밀번호 확인", type: "password", required: true, placeholder: "한 번 더 입력" },
+        { name: "birth", label: "생년월일", type: "text", required: true, placeholder: "예) 19600315 (숫자 8자리)", pattern: "^\\d{8}$", patternMsg: "생년월일은 숫자 8자리로 입력해 주세요." },
         { name: "department", label: "이전 직업·경력", type: "text", required: false, placeholder: "예) 교사 30년, 공무원" },
         { name: "grade", label: "AI 사용 경험", type: "select", required: true, options: ["처음입니다", "몇 번 써 봤습니다", "자주 사용합니다"] },
         { name: "email", label: "이메일", type: "email", required: true, placeholder: "name@example.com" },

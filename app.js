@@ -110,6 +110,7 @@
     return H.map(function (x) { return ("00000000" + (x >>> 0).toString(16)).slice(-8); }).join("");
   }
   function hashSecret(s) { return sha256("kucourse|" + s); }
+  function pwHash(id, pw) { return sha256("kucourse|pw|" + id + "|" + pw); } // 서버 없이 쓸 때의 수강생 비밀번호 지문
   function rosterHash(id, name) { return sha256("kucourse|roster|" + id + "|" + name); }
 
   /* 관리자 화면에서 고친 내용(이 브라우저에 저장)이 있으면 그것을 씁니다.
@@ -1362,7 +1363,7 @@
         h("div", { class: "done-icon", "aria-hidden": "true" }, "✓"),
         h("h4", {}, apply.successTitle),
         h("p", {}, apply.successText),
-        REMOTE ? h("p", { class: "done-meta" }, "관리자가 승인하면 주차별 학습 내용을 볼 수 있습니다. 승인 뒤 화면 오른쪽 위 '로그인'에서 같은 " + idField.label + "·이름으로 로그인해 주세요.") : null,
+        REMOTE ? h("p", { class: "done-meta" }, "관리자가 승인하면 주차별 학습 내용을 볼 수 있습니다. 승인 뒤 화면 오른쪽 위 '로그인'에서 가입한 아이디·비밀번호로 로그인해 주세요.") : null,
         h("p", { class: "done-meta" }, saved.name + " (" + saved.studentId + ") · " + fmtStamp(saved.at)),
         again,
       ]));
@@ -1375,15 +1376,28 @@
   // 수강 신청서(=회원가입) 저장: 아래 신청서와 우측 상단 회원가입 창이 함께 씁니다.
   function submitApplication(values, api, after) {
     values.at = Date.now();
+    var password = values.password;
+    if ("password" in values) {
+      if (password !== values.password2) return api.fail("password2", "비밀번호가 서로 다릅니다. 다시 확인해 주세요.");
+      values.studentId = String(values.studentId || "").trim().toLowerCase(); // 아이디는 소문자로 통일
+    }
+    // 화면·브라우저에 남기는 기록에는 비밀번호 원문을 넣지 않습니다.
+    var record = {};
+    Object.keys(values).forEach(function (k) { if (k !== "password" && k !== "password2") record[k] = values[k]; });
     function done() {
-      store.set("application", values);
-      store.set("applications", store.get("applications", []).concat([values])); // 관리자 화면의 신청 내역
+      store.set("application", record);
+      store.set("applications", store.get("applications", []).concat([record])); // 관리자 화면의 신청 내역
       renderApply();
       if (after) after();
     }
-    if (REMOTE) {
+    if (REMOTE) { // 비밀번호는 서버가 지문(해시)으로 바꿔 저장합니다.
       return call("POST", "applications", { data: values }).then(done)
-        .catch(function (err) { api.error(err.message); });
+        .catch(function (err) { if (err.field) api.fail(err.field, err.message); else api.error(err.message); });
+    }
+    if (password) { // 서버 없이 쓸 때: 이 브라우저에 아이디 중복 확인 후 비밀번호 지문만 저장
+      var taken = store.get("applications", []).some(function (a) { return a.studentId === record.studentId; });
+      if (taken) return api.fail("studentId", "이미 사용 중인 아이디입니다.");
+      record.pwHash = pwHash(record.studentId, password);
     }
     if (!apply.endpoint) return done();
     fetch(apply.endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) })
@@ -1421,13 +1435,13 @@
         [
           h("p", { class: "student-modal-lead" }, REMOTE
             ? "관리자가 승인하면 로그인해서 주차별 학습 내용을 볼 수 있습니다."
-            : "이제 오른쪽 위 '로그인'에서 같은 " + idField.label + "·이름으로 로그인할 수 있습니다."),
+            : "이제 오른쪽 위 '로그인'에서 아이디·비밀번호로 로그인할 수 있습니다."),
           h("dl", { class: "info-list" }, [infoRow("이름", saved.name), infoRow(idField.label, saved.studentId)]),
           login, again,
         ].forEach(function (el) { body.appendChild(el); });
         return;
       }
-      body.appendChild(h("p", { class: "student-modal-lead" }, "아래 정보를 적어 가입을 신청해 주세요. 가입 후 " + idField.label + "·이름으로 로그인합니다."));
+      body.appendChild(h("p", { class: "student-modal-lead" }, "아래 정보를 적어 가입해 주세요. 가입 후 아이디·비밀번호로 로그인합니다."));
       if (!REMOTE && apply.notice) body.appendChild(notice(apply.notice));
       body.appendChild(makeForm(apply.fields, "가입 신청하기", function (values, api) {
         return submitApplication(values, api, draw);
@@ -1523,7 +1537,7 @@
     var myAtt = (store.get("attendance", {})[me.id]) || {};
     var attended = weeks.filter(function (w) { return myAtt[w.week]; }).length;
     studentBar.appendChild(h("span", {}, [
-      "👤 ", h("b", {}, me.name + "님"), h("span", { class: "sub-meta" }, " · 학번 " + me.id),
+      "👤 ", h("b", {}, me.name + "님"), h("span", { class: "sub-meta" }, " · 아이디 " + me.id),
       REMOTE ? h("span", { class: "tag " + (waiting ? "" : "tag-assign") }, waiting ? "승인 대기" : "승인됨") : null,
       waiting ? null : h("span", { class: "sub-meta" }, " · 출석 " + attended + "/" + weeks.length + "회"),
     ]));
@@ -1618,24 +1632,27 @@
     if (!me) {
       head("🔐", "수강생 로그인", w ? w.week + "주차 과제를 제출하려면 먼저 로그인해 주세요." : "로그인하면 출석을 체크하고 과제를 제출할 수 있습니다.");
       box.appendChild(makeForm([
-        // 아이디 칸은 회원가입(신청서)의 studentId 칸과 같은 이름·형식을 씁니다.
-        { name: "id", label: idField.label, type: "text", required: true, placeholder: idField.placeholder || "", pattern: idField.pattern, patternMsg: idField.patternMsg },
-        { name: "name", label: "이름", type: "text", required: true, placeholder: "홍길동", hint: "회원가입 때 적은 " + idField.label + "·이름을 입력하세요." },
+        // 회원가입 때 만든 아이디·비밀번호로 로그인합니다.
+        { name: "id", label: "아이디", type: "text", required: true, placeholder: "회원가입 때 만든 아이디" },
+        { name: "password", label: "비밀번호", type: "password", required: true, placeholder: "비밀번호" },
       ], "로그인", function (values, api) {
-        if (REMOTE) { // 서버가 명단(수강 신청자)에 있는 학번·이름인지 확인합니다.
-          return call("POST", "student/login", { id: values.id, name: values.name })
+        var loginId = String(values.id).trim().toLowerCase();
+        if (REMOTE) { // 서버가 아이디·비밀번호를 확인합니다.
+          return call("POST", "student/login", { id: loginId, password: values.password })
             .then(function (res) {
-              store.set("session", { id: res.id, name: res.name, token: res.token, approved: !!res.approved });
+              store.set("session", { id: res.id, name: res.name, token: res.token, approved: !!res.approved, profile: res.profile });
               if (w) store.set("openAssign", w.week); // 새로 고친 뒤 제출 창을 이어서 엽니다.
               location.hash = w ? "#week-" + w.week : "#weeks-title";
               location.reload();
             })
-            .catch(function (err) { api.fail("id", err.message); });
+            .catch(function (err) { api.fail(err.field || "password", err.message); });
         }
-        // 관리자가 명단을 등록했다면 명단에 있는 학번·이름만 들어올 수 있습니다.
-        if (room.rosterHashes.length && room.rosterHashes.indexOf(rosterHash(values.id, values.name)) < 0) {
-          return api.fail("id", "수강생 명단에 없는 학번·이름입니다.");
+        // 서버 없이 쓸 때: 이 브라우저에서 가입한 기록(아이디·비밀번호 지문)과 맞춰 봅니다.
+        var acct = store.get("applications", []).filter(function (a) { return a.studentId === loginId; }).pop();
+        if (!acct || acct.pwHash !== pwHash(loginId, values.password)) {
+          return api.fail("password", "아이디 또는 비밀번호가 맞지 않습니다.");
         }
+        values = { id: loginId, name: acct.name, birth: acct.birth };
         // 로그인 전에 한 투표는 내 학번으로 옮겨 한 사람이 두 번 투표하지 않게 합니다.
         var allVotes = store.get("pollVotes", {});
         var guest = voterId();
@@ -1646,7 +1663,7 @@
           delete votes[guest];
         });
         store.set("pollVotes", allVotes);
-        store.set("session", { id: values.id, name: values.name });
+        store.set("session", { id: values.id, name: values.name, profile: { birth: values.birth || "" } });
         renderStudent(); updatePoll();
       }));
       return;
@@ -1992,7 +2009,8 @@
     var preview = attended < need;
     var d = nowDate();
     var issued = d.getFullYear() + "년 " + (d.getMonth() + 1) + "월 " + d.getDate() + "일";
-    var birth = /^\d{8}$/.test(me.id) ? me.id.slice(0, 4) + ". " + me.id.slice(4, 6) + ". " + me.id.slice(6) : "";
+    var bd = String((me.profile && me.profile.birth) || ""); // 회원가입 때 적은 생년월일(숫자 8자리)
+    var birth = /^\d{8}$/.test(bd) ? bd.slice(0, 4) + ". " + bd.slice(4, 6) + ". " + bd.slice(6) : "";
     var no = (cert.numberPrefix || "") + String(parseInt(sha256(me.id + "|" + me.name).slice(0, 6), 16) % 10000).padStart(4, "0");
     return ('<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>수료증 - ' + esc(me.name) + '</title>' +
       '<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;700;900&display=swap" rel="stylesheet">' +

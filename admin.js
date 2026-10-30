@@ -1645,7 +1645,7 @@
         var p = line.replace(/^﻿/, "").split(/[,\t;]/).map(function (x) { return x.replace(/^["'\s]+|["'\s]+$/g, ""); });
         if (!p[0] && !p[1]) return;
         var dup = roster.some(function (r) { return r.id === p[0]; });
-        if (/^\d{6,12}$/.test(p[0]) && p[1] && !dup) { roster.push({ id: p[0], name: p[1] }); added++; } else skipped++;
+        if (/^[A-Za-z0-9_]{4,20}$/.test(p[0]) && p[1] && !dup) { roster.push({ id: p[0], name: p[1] }); added++; } else skipped++;
       });
       return { added: added, skipped: skipped };
     }
@@ -1654,7 +1654,7 @@
     var file = h("input", { type: "file", accept: ".csv,.txt", "aria-label": "명단 CSV 파일" });
     function report(r) {
       if (r.added) { sync(); return; }
-      result.textContent = "추가된 사람이 없습니다. (건너뜀 " + r.skipped + "줄 — 생년월일(숫자)·이름 형식과 중복을 확인하세요)";
+      result.textContent = "추가된 사람이 없습니다. (건너뜀 " + r.skipped + "줄 — 아이디(영문·숫자 4~20자)·이름 형식과 중복을 확인하세요)";
     }
     file.addEventListener("change", function () {
       if (!file.files[0]) return;
@@ -1671,7 +1671,7 @@
         h("div", { class: "card ad-card" }, [
           h("h4", {}, "한 명 추가"),
           makeForm([
-            { name: "id", label: "생년월일(아이디)", type: "text", required: true, pattern: "^\\d{6,12}$", patternMsg: "숫자로 입력해 주세요. (예: 19600315)" },
+            { name: "id", label: "아이디", type: "text", required: true, pattern: "^[A-Za-z0-9_]{4,20}$", patternMsg: "아이디는 영문·숫자 4~20자로 입력해 주세요.", hint: "비밀번호 없이 등록됩니다. 본인이 같은 아이디·이름으로 회원가입하면 비밀번호가 정해집니다." },
             { name: "name", label: "이름", type: "text", required: true },
           ], "명단에 추가", function (v, api) {
             if (roster.some(function (r) { return r.id === v.id; })) return api.fail("id", "이미 등록된 학번입니다.");
@@ -1769,7 +1769,7 @@
     });
 
     var apps = store.get("applications", []);
-    var fields = C.participate.apply.fields.filter(function (f) { return f.type !== "checkbox"; });
+    var fields = C.participate.apply.fields.filter(function (f) { return f.type !== "checkbox" && f.type !== "password"; }); // 비밀번호 칸은 표시하지 않음
     var appHead = fields.map(function (f) { return f.label; }).concat(["신청 시각"]);
     var appRows = apps.map(function (a) {
       return fields.map(function (f) { return a[f.name] || ""; }).concat([stamp(a.at)]);
