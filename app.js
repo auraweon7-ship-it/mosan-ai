@@ -156,10 +156,28 @@
     return el;
   }
 
+  /* 두 가지 굵기 제목: "*…*"로 감싼 부분, 없으면 마지막 낱말을 굵게 씁니다.
+   *   (예) "프로그램 소개" → 프로그램 <b>소개</b>,  "모산과 함께하는 *AI 집중 교육*" → <b>AI 집중 교육</b>만 굵게 */
+  function twoTone(text) {
+    text = String(text || "");
+    var m = /^(.*?)\*(.+?)\*(.*)$/.exec(text);
+    if (!m) {
+      var cut = text.lastIndexOf(" ");
+      if (cut < 0) return [h("b", {}, text)];
+      m = [null, text.slice(0, cut + 1), text.slice(cut + 1), ""];
+    }
+    return [m[1], h("b", {}, m[2]), m[3]];
+  }
+  // 제목 아래 세 가지 색 점 (분홍·주황·초록)
+  function dots3() {
+    return h("span", { class: "dots3", "aria-hidden": "true" }, [h("i"), h("i"), h("i")]);
+  }
+
   function sectionHead(cfg) {
     return h("div", { class: "section-head reveal" }, [
       h("span", { class: "eyebrow" }, cfg.eyebrow),
-      h("h2", {}, cfg.title),
+      h("h2", {}, twoTone(cfg.title)),
+      dots3(),
       cfg.lead ? h("p", { class: "lead" }, cfg.lead) : null,
     ]);
   }
@@ -223,14 +241,24 @@
       ]),
     ]);
   }));
-  // 오른쪽 그림: 비스듬한 알약 모양 조각. hero.image가 있으면 그 사진을, 없으면 로고를 씁니다.
+  /* 오른쪽 그림: 유기적인 곡선(blob) 모양 액자. hero.image가 있으면 그 사진을, 없으면 로고와 hero.artText를 넣습니다.
+   * hero.artBadge({ value, label })는 액자 모서리의 색 상자로 표시됩니다. */
   var heroArt = h("div", { class: "hero-art", "aria-hidden": "true" }, [
-    h("div", {
-      class: "hero-art-img" + (hero.image ? " photo" : ""),
-      style: hero.image ? "background-image:url('" + hero.image + "')"
-        : (site.logoImage ? "background-image:url('" + site.logoImage + "'),linear-gradient(135deg,#0f8a70,#1d6fd1 55%,#f39a12)" : ""),
-    }),
-    h("span", { class: "dot dot-green" }), h("span", { class: "dot dot-blue" }), h("span", { class: "dot dot-red" }),
+    h("div", { class: "blob-shell" }, [
+      h("div", { class: "blob-ring" }, [
+        h("div", {
+          class: "blob-inner" + (hero.image ? " photo" : ""),
+          style: hero.image ? "background-image:url('" + hero.image + "')" : "",
+        }, hero.image ? null : [
+          logoMark("blob-logo"),
+          hero.artText ? h("p", { class: "blob-text" }, twoTone(hero.artText)) : null,
+          dots3(),
+        ]),
+      ]),
+    ]),
+    hero.artBadge ? h("div", { class: "blob-badge" }, [h("b", {}, hero.artBadge.value), h("span", {}, hero.artBadge.label)]) : null,
+    h("span", { class: "blob-chip chip-a" }, "💬"),
+    h("span", { class: "blob-chip chip-b" }, "🎨"),
   ]);
   var heroEl = h("section", { class: "hero" }, [
     h("span", { class: "dot dot-orange hero-dot-a", "aria-hidden": "true" }),
@@ -240,7 +268,7 @@
         h("div", { class: "hero-copy" }, [
           h("span", { class: "hero-badge" }, hero.badge),
           h("h1", {}, courseName), // 버전은 헤더에만 표시합니다.
-          h("p", { class: "hero-subtitle" }, hero.subtitle),
+          h("p", { class: "hero-subtitle" }, twoTone(hero.subtitle)),
           h("p", { class: "hero-dept" }, orgLine),
           h("p", { class: "hero-desc" }, hero.description),
           h("div", { class: "hero-actions" }, hero.buttons.map(function (b) {
@@ -311,7 +339,7 @@
       return h("div", { class: "ig-block" }, [h("div", { class: "ig-label" }, title), body]);
     }
     return h("figure", { class: "card ig reveal", "aria-label": ig.title }, [
-      h("figcaption", { class: "ig-title" }, ig.title),
+      h("figcaption", { class: "ig-title" }, twoTone(ig.title)),
 
       h("div", { class: "ig-io" }, [
         block(ig.inputsTitle, h("ul", { class: "ig-inputs" }, ig.inputs.map(function (x) {
@@ -686,7 +714,7 @@
   var studentBar = h("div", { class: "card student-bar reveal" }); // 수강생 로그인 상태 (아래 renderStudentBar에서 채움)
   // 달력을 위에, 주차 목록을 아래에 둡니다(일정을 먼저 보도록).
   var curEl = section(cur, [
-    h("h3", { class: "sub-title reveal", id: "calendar" }, cur.calendarTitle),
+    h("h3", { class: "sub-title reveal", id: "calendar" }, twoTone(cur.calendarTitle)),
     h("div", { class: "cal-wrap reveal" }, [
       h("div", { class: "card cal" }, [
         h("div", { class: "cal-head" }, [calPrev, h("div", { class: "cal-head-mid" }, [calTitle, calToday]), calNext]),
@@ -702,7 +730,7 @@
       ]),
       calDetail,
     ]),
-    h("h3", { class: "sub-title gap-top reveal", id: "weeks-title" }, cur.weeksTitle),
+    h("h3", { class: "sub-title gap-top reveal", id: "weeks-title" }, twoTone(cur.weeksTitle)),
     studentBar,
     FULL ? null : notice("주차별 학습 내용은 관리자가 승인한 수강생에게만 공개됩니다. 주차 제목과 일정만 표시됩니다."),
     stageFilter,

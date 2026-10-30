@@ -24,7 +24,8 @@ python tools/excel_to_config.py
 | --- | --- |
 | `index.html` | 사이트 뼈대. 이 파일을 열면 사이트가 보입니다. |
 | `config.js` | **사이트의 모든 내용**(글, 일정, 메뉴, 공지 등). 내용은 여기만 고치면 됩니다. |
-| `styles.css` | 디자인. 색을 바꾸려면 맨 위 `:root` 안의 값을 고칩니다. |
+| `styles.css` | 기본 디자인. |
+| `theme-organic.css` | Organic Shape(뉴모피즘) 테마. 색은 맨 위 `:root` 값을 고칩니다. index.html에서 이 줄을 빼면 기본 디자인으로 돌아갑니다. |
 | `app.js` | 화면을 그리고 움직이는 코드. |
 | `admin.js` | 관리자 화면 코드. |
 | `README.md` | 이 안내 문서. |
@@ -111,7 +112,7 @@ python tools/excel_to_config.py
 
 ## 7. 배포 (인터넷에 올리기)
 
-올릴 파일: `index.html`, `config.js`, `styles.css`, `app.js`, `admin.js` (+ 사진을 넣었다면 `images` 폴더)
+올릴 파일: `index.html`, `config.js`, `styles.css`, `theme-organic.css`, `app.js`, `admin.js` (+ 사진을 넣었다면 `images` 폴더)
 
 **배포 전 점검**
 
