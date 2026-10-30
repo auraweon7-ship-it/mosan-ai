@@ -1,0 +1,1960 @@
+/* config.js의 내용을 읽어 화면을 그립니다. 내용 수정은 config.js에서 하세요. */
+(function () {
+  "use strict";
+
+  /* 서버(DB)가 연결된 곳에서는 저장된 내용을 먼저 받아 온 뒤 화면을 그립니다.
+   * 파일을 직접 열었거나 서버에 DB가 없으면 예전처럼 브라우저 저장소만 씁니다. */
+  function start(remote) {
+    main(remote && remote.db ? remote : null);
+    document.dispatchEvent(new Event("ku:ready"));
+  }
+  if (location.protocol === "file:" || !window.fetch) return start(null);
+  var started = false;
+  var giveUp = setTimeout(function () { if (!started) { started = true; start(null); } }, 5000);
+  var bootHeaders = {};
+  try {
+    var bootAdmin = JSON.parse(localStorage.getItem("kucourse:adminLogin") || "null");
+    var bootUser = JSON.parse(localStorage.getItem("kucourse:session") || "null");
+    var bootToken = (bootAdmin && bootAdmin.token && Date.now() < bootAdmin.until && bootAdmin.token) || (bootUser && bootUser.token);
+    if (bootToken) bootHeaders.Authorization = "Bearer " + bootToken;
+  } catch (e) { /* 토큰 없이 진행 */ }
+  fetch("api/state", { cache: "no-store", headers: bootHeaders })
+    .then(function (res) { return res.ok ? res.json() : null; })
+    .catch(function () { return null; })
+    .then(function (remote) {
+      if (started) return;
+      started = true;
+      clearTimeout(giveUp);
+      start(remote);
+    });
+
+  function main(remote) {
+  var REMOTE = !!remote; // true면 서버(DB)에 저장
+  // 서버 API 호출. 실패하면 서버가 보낸 안내 문구를 담은 오류를 던집니다.
+  function call(method, path, body, token) {
+    var headers = { "Content-Type": "application/json" };
+    if (token) headers.Authorization = "Bearer " + token;
+    return fetch("api/" + path, { method: method, headers: headers, body: body === undefined ? undefined : JSON.stringify(body), cache: "no-store" })
+      .then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          if (res.ok) return data;
+          var err = new Error(data.error || "요청을 처리하지 못했습니다. (" + res.status + ")");
+          err.status = res.status;
+          err.field = data.field;
+          throw err;
+        });
+      });
+  }
+
+  var BASE = window.SITE_CONFIG;
+  if (!BASE) {
+    document.getElementById("main").textContent = "config.js를 불러오지 못했습니다.";
+    return;
+  }
+
+  // 브라우저 저장소(localStorage). 쓸 수 없는 환경에서는 새로고침 전까지만 기억합니다.
+  var memory = {};
+  var store = {
+    get: function (k, def) {
+      try {
+        var v = localStorage.getItem("kucourse:" + k);
+        if (v !== null) { v = JSON.parse(v); return v === null ? def : v; }
+      } catch (e) { /* 아래 memory 사용 */ }
+      return k in memory && memory[k] !== null ? memory[k] : def;
+    },
+    set: function (k, v) {
+      memory[k] = v;
+      try { localStorage.setItem("kucourse:" + k, JSON.stringify(v)); } catch (e) { /* memory에만 저장 */ }
+    },
+  };
+
+  // SHA-256: 비밀번호·수강 코드·명단을 원문 대신 지문(해시)으로 저장하고 비교합니다.
+  function sha256(text) {
+    function rotr(x, n) { return (x >>> n) | (x << (32 - n)); }
+    var K = [], H = [], found = 0, cand = 2, d, t;
+    while (found < 64) {
+      var prime = true;
+      for (d = 2; d * d <= cand; d++) if (cand % d === 0) { prime = false; break; }
+      if (prime) {
+        if (found < 8) H[found] = (Math.pow(cand, 0.5) * 4294967296) | 0;
+        K[found] = (Math.pow(cand, 1 / 3) * 4294967296) | 0;
+        found++;
+      }
+      cand++;
+    }
+    var data = Array.prototype.slice.call(new TextEncoder().encode(text));
+    var bits = data.length * 8;
+    data.push(0x80);
+    while (data.length % 64 !== 56) data.push(0);
+    for (d = 7; d >= 0; d--) data.push(d >= 4 ? 0 : (bits >>> (d * 8)) & 255);
+    for (var off = 0; off < data.length; off += 64) {
+      var w = [];
+      for (t = 0; t < 64; t++) {
+        if (t < 16) {
+          w[t] = (data[off + t * 4] << 24) | (data[off + t * 4 + 1] << 16) | (data[off + t * 4 + 2] << 8) | data[off + t * 4 + 3];
+        } else {
+          var s0 = rotr(w[t - 15], 7) ^ rotr(w[t - 15], 18) ^ (w[t - 15] >>> 3);
+          var s1 = rotr(w[t - 2], 17) ^ rotr(w[t - 2], 19) ^ (w[t - 2] >>> 10);
+          w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;
+        }
+      }
+      var a = H[0], b = H[1], c = H[2], dd = H[3], e = H[4], f = H[5], g = H[6], hh = H[7];
+      for (t = 0; t < 64; t++) {
+        var t1 = (hh + (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) + ((e & f) ^ (~e & g)) + K[t] + w[t]) | 0;
+        var t2 = ((rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+        hh = g; g = f; f = e; e = (dd + t1) | 0; dd = c; c = b; b = a; a = (t1 + t2) | 0;
+      }
+      H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + dd) | 0;
+      H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + hh) | 0;
+    }
+    return H.map(function (x) { return ("00000000" + (x >>> 0).toString(16)).slice(-8); }).join("");
+  }
+  function hashSecret(s) { return sha256("kucourse|" + s); }
+  function rosterHash(id, name) { return sha256("kucourse|roster|" + id + "|" + name); }
+
+  /* 관리자 화면에서 고친 내용(이 브라우저에 저장)이 있으면 그것을 씁니다.
+   * config.js 파일이 바뀌면 예전 수정본은 자동으로 버립니다. 주소 끝에 ?reset 을 붙여도 버립니다. */
+  var baseStamp = sha256(JSON.stringify(BASE));
+  if (/[?&]reset\b/.test(location.search)) store.set("config", null);
+  var override = store.get("config", null);
+  var usingOverride = !!(override && override.base === baseStamp && override.data);
+  var C = usingOverride ? override.data : BASE;
+  var FULL = !REMOTE; // 주차별 학습 내용을 볼 수 있는지(서버 없이 쓸 때는 항상 가능)
+  if (REMOTE) { // 서버가 내 권한에 맞춰 보내 준 설정을 씁니다.
+    usingOverride = !!remote.override;
+    C = remote.config || BASE;
+    FULL = !!remote.full;
+    if (remote.version) C.site.version = remote.version; // 버전은 서버(package.json)가 알려 주는 값을 씁니다.
+    // 서버가 인정하지 않는 로그인 기록은 지웁니다(기한 만료 등).
+    if (store.get("adminLogin", null) && remote.role !== "admin") store.set("adminLogin", null);
+    var bootSession = store.get("session", null);
+    if (bootSession && remote.role === null) store.set("session", null);
+    else if (bootSession && remote.role === "student") { bootSession.approved = !!remote.approved; store.set("session", bootSession); }
+  }
+  C.notices = C.notices || { title: "공지사항", items: [] };
+  C.admin = C.admin || { passwordHash: "" };
+  C.portfolio = C.portfolio || { id: "portfolio", eyebrow: "Portfolio", title: "우수 과제 포트폴리오", lead: "", buttonLabel: "과제물 보기", emptyText: "", items: [] };
+  C.classroom.rosterHashes = C.classroom.rosterHashes || [];
+  // '내 강의실' 섹션은 없어졌습니다(로그인·출석·과제 제출은 주차별 학습에서). 저장된 설정에 남은 메뉴도 뺍니다.
+  C.nav = (C.nav || []).filter(function (n) { return n.id !== "classroom"; });
+
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // 요소 생성 도우미: h("div", {class: "card"}, [자식...])
+  function h(tag, attrs, children) {
+    var el = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (k) {
+      if (attrs[k] === null || attrs[k] === undefined || attrs[k] === "") return;
+      if (k === "class") el.className = attrs[k];
+      else if (k === "style") el.style.cssText = attrs[k];
+      else el.setAttribute(k, attrs[k]);
+    });
+    [].concat(children || []).forEach(function (c) {
+      if (c === null || c === undefined || c === "") return;
+      el.appendChild(typeof c === "object" ? c : document.createTextNode(String(c)));
+    });
+    return el;
+  }
+
+  function sectionHead(cfg) {
+    return h("div", { class: "section-head reveal" }, [
+      h("span", { class: "eyebrow" }, cfg.eyebrow),
+      h("h2", {}, cfg.title),
+      cfg.lead ? h("p", { class: "lead" }, cfg.lead) : null,
+    ]);
+  }
+
+  function section(cfg, body) {
+    return h("section", { class: "section", id: cfg.id }, [
+      h("div", { class: "container" }, [sectionHead(cfg)].concat(body)),
+    ]);
+  }
+
+  function iconBubble(icon) {
+    return h("div", { class: "icon-bubble", "aria-hidden": "true" }, icon);
+  }
+
+  var site = C.site;
+  var courseName = "「" + site.courseTitle + "」";
+  // 제목 옆·위에 붙는 소속 줄: brandSub가 있으면 그것을, 없으면 "대학교 학과"
+  var orgLine = site.brandSub || site.university + " " + site.department;
+  document.title = courseName + " | " + orgLine;
+
+  /* ── 헤더 ── */
+  var brand = document.getElementById("brand");
+  // 로고: 이미지가 있으면 이미지, 없으면 이모지
+  function logoMark(cls) {
+    return h("span", { class: cls + (site.logoImage ? " has-img" : ""), "aria-hidden": "true" },
+      site.logoImage ? h("img", { src: site.logoImage, alt: "" }) : site.logoEmoji);
+  }
+  brand.appendChild(logoMark("brand-logo"));
+  if (site.logoImage) document.head.appendChild(h("link", { rel: "icon", href: site.logoImage }));
+  brand.appendChild(h("span", { class: "brand-text" }, [
+    h("span", { class: "brand-sub" }, site.headerSub || orgLine),
+    h("span", { class: "brand-title" }, [courseName, site.version ? h("span", { class: "ver" }, site.version) : null]),
+  ]));
+
+  var headerCta = C.hero.buttons.filter(function (b) { return b.primary; })[0];
+  if (headerCta) {
+    var ctaExternal = headerCta.href.charAt(0) !== "#";
+    document.querySelector(".header-inner").appendChild(h("a", {
+      class: "header-cta", href: headerCta.href, target: ctaExternal ? "_blank" : "", rel: ctaExternal ? "noopener" : "",
+    }, headerCta.label));
+  }
+
+  // 우측 상단 수강생 로그인 버튼 (로그인하면 이름이 표시됩니다 → renderStudentBar)
+  var headerLogin = h("button", { class: "header-login", type: "button" }, "로그인");
+  headerLogin.addEventListener("click", function () { openStudent(null); });
+  document.querySelector(".header-inner").appendChild(headerLogin);
+
+  var nav = document.getElementById("siteNav");
+  C.nav.forEach(function (item) {
+    nav.appendChild(h("a", { href: "#" + item.id, "data-target": item.id }, item.label));
+  });
+
+  /* ── 첫 화면 ── */
+  var hero = C.hero;
+  var quickCard = h("div", { class: "card quick" }, hero.quickInfo.map(function (it) {
+    return h("div", { class: "quick-item" }, [
+      iconBubble(it.icon),
+      h("div", {}, [
+        h("div", { class: "quick-label" }, it.label),
+        h("div", { class: "quick-value" }, it.value),
+      ]),
+    ]);
+  }));
+  // 오른쪽 그림: 비스듬한 알약 모양 조각. hero.image가 있으면 그 사진을, 없으면 로고를 씁니다.
+  var heroArt = h("div", { class: "hero-art", "aria-hidden": "true" }, [
+    h("div", {
+      class: "hero-art-img" + (hero.image ? " photo" : ""),
+      style: hero.image ? "background-image:url('" + hero.image + "')"
+        : (site.logoImage ? "background-image:url('" + site.logoImage + "'),linear-gradient(135deg,#0f8a70,#1d6fd1 55%,#f39a12)" : ""),
+    }),
+    h("span", { class: "dot dot-green" }), h("span", { class: "dot dot-blue" }), h("span", { class: "dot dot-red" }),
+  ]);
+  var heroEl = h("section", { class: "hero" }, [
+    h("span", { class: "dot dot-orange hero-dot-a", "aria-hidden": "true" }),
+    h("span", { class: "hero-pill-deco", "aria-hidden": "true" }),
+    h("div", { class: "container" }, [
+      h("div", { class: "hero-grid" }, [
+        h("div", { class: "hero-copy" }, [
+          h("span", { class: "hero-badge" }, hero.badge),
+          h("h1", {}, courseName), // 버전은 헤더에만 표시합니다.
+          h("p", { class: "hero-subtitle" }, hero.subtitle),
+          h("p", { class: "hero-dept" }, orgLine),
+          h("p", { class: "hero-desc" }, hero.description),
+          h("div", { class: "hero-actions" }, hero.buttons.map(function (b) {
+            var external = b.href.charAt(0) !== "#";
+            return h("a", {
+              class: "btn " + (b.primary ? "btn-primary" : "btn-ghost"),
+              href: b.href,
+              target: external ? "_blank" : "",
+              rel: external ? "noopener" : "",
+            }, b.label);
+          })),
+        ]),
+        heroArt,
+      ]),
+      quickCard,
+    ]),
+  ]);
+
+  /* ── 통계 ── */
+  var statsEl = h("section", { class: "stats", "aria-label": "숫자로 보는 강의" }, [
+    h("div", { class: "container grid grid-4 stats-grid" }, C.stats.map(function (s) {
+      return h("div", { class: "card lift stat reveal" }, [
+        h("div", { class: "stat-value" }, [
+          h("span", { class: "stat-num", "data-value": s.value }, s.value),
+          h("span", { class: "stat-suffix" }, s.suffix),
+        ]),
+        h("div", { class: "stat-label" }, s.label),
+      ]);
+    })),
+  ]);
+
+  /* ── 강의 소개: 장점 슬라이드 ── */
+  var about = C.about;
+  var track = h("div", { class: "slider-track", tabindex: "0", role: "group", "aria-label": "강의의 장점 (좌우로 넘겨 보기)" },
+    about.slides.map(function (s, idx) {
+      return h("article", { class: "card lift slide" }, [
+        h("div", { class: "slide-top" }, [
+          iconBubble(s.icon),
+          h("span", { class: "slide-no" }, (idx < 9 ? "0" : "") + (idx + 1)),
+        ]),
+        h("h3", {}, s.title),
+        h("p", {}, s.text),
+      ]);
+    }));
+  var prevBtn = h("button", { class: "slider-btn", type: "button", "aria-label": "이전 장점" }, "‹");
+  var nextBtn = h("button", { class: "slider-btn", type: "button", "aria-label": "다음 장점" }, "›");
+  var dots = h("div", { class: "slider-dots" });
+  var aboutEl = section(about, [
+    about.intro && about.intro.length
+      ? h("div", { class: "card about-text reveal" }, about.intro.map(function (p) { return h("p", {}, p); })) : null,
+    about.slidesTitle ? h("h3", { class: "sub-title gap-top reveal" }, about.slidesTitle) : null,
+    h("div", { class: "slider reveal" }, [
+      track,
+      h("div", { class: "slider-controls" }, [prevBtn, dots, nextBtn]),
+    ]),
+    about.goals && about.goals.length ? h("h3", { class: "sub-title gap-top reveal" }, about.goalsTitle) : null,
+    about.goals && about.goals.length ? h("div", { class: "card reveal" }, [
+      about.goalsLead ? h("p", { class: "goals-lead" }, about.goalsLead) : null,
+      h("ol", { class: "goal-list" }, about.goals.map(function (g) { return h("li", {}, g); })),
+    ]) : null,
+    infographic(about.infographic),
+  ]);
+
+  /* 인포그래픽: 활용하는 것 → 만드는 것 / 제작 과정 / 학습 흐름 / 도구 */
+  function infographic(ig) {
+    if (!ig) return null;
+    function block(title, body) {
+      return h("div", { class: "ig-block" }, [h("div", { class: "ig-label" }, title), body]);
+    }
+    return h("figure", { class: "card ig reveal", "aria-label": ig.title }, [
+      h("figcaption", { class: "ig-title" }, ig.title),
+
+      h("div", { class: "ig-io" }, [
+        block(ig.inputsTitle, h("ul", { class: "ig-inputs" }, ig.inputs.map(function (x) {
+          return h("li", {}, [
+            h("span", { class: "ig-icon", "aria-hidden": "true" }, x.icon),
+            h("div", {}, [h("b", {}, x.title), h("span", {}, x.text)]),
+          ]);
+        }))),
+        h("div", { class: "ig-arrow", "aria-hidden": "true" }, "➜"),
+        block(ig.outputsTitle, h("ul", { class: "ig-outputs" }, ig.outputs.map(function (x) {
+          return h("li", {}, [h("span", { class: "ig-icon", "aria-hidden": "true" }, x.icon), h("b", {}, x.label)]);
+        }))),
+      ]),
+
+      block(ig.stepsTitle, h("ol", { class: "ig-steps" }, ig.steps.map(function (s, idx) {
+        return h("li", {}, [
+          h("span", { class: "ig-num" }, idx + 1),
+          h("span", { class: "ig-step-icon", "aria-hidden": "true" }, s.icon),
+          h("b", {}, s.title),
+          h("span", {}, s.text),
+        ]);
+      }))),
+
+      block(ig.roadmapTitle, h("div", {}, [
+        h("div", { class: "ig-bar", "aria-hidden": "true" }, ig.roadmap.map(function (r) {
+          return h("span", { style: "flex-grow:" + (Number(r.span) || 1) }, r.weeks);
+        })),
+        h("ol", { class: "ig-road" }, ig.roadmap.map(function (r) {
+          return h("li", {}, [h("em", {}, r.weeks), h("b", {}, r.title), h("span", {}, r.text)]);
+        })),
+      ])),
+
+      block(ig.toolsTitle, h("ul", { class: "ig-tools" }, ig.toolGroups.map(function (g) {
+        return h("li", {}, [
+          h("b", {}, g.title),
+          h("div", {}, g.items.map(function (t) { return h("span", {}, t); })),
+        ]);
+      }))),
+    ]);
+  }
+
+  /* ── 커리큘럼 ── */
+  var cur = C.curriculum;
+  var sched = cur.schedule;
+  var DOW = ["일", "월", "화", "수", "목", "금", "토"];
+
+  // "2026-03-03" 또는 "2026-03-17T23:59" → 날짜(내 컴퓨터 시간 기준)
+  function parseDate(s) {
+    var m = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:T(\d{1,2}):(\d{2}))?/.exec(s || "");
+    return m ? new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0)) : null; // 형식이 틀리면 null
+  }
+  function dateKey(d) { return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate(); }
+  function fmtDate(d) { return d.getFullYear() + ". " + (d.getMonth() + 1) + ". " + d.getDate() + " (" + DOW[d.getDay()] + ")"; }
+  function fmtShort(d) { return (d.getMonth() + 1) + "월 " + d.getDate() + "일 (" + DOW[d.getDay()] + ")"; }
+  function fmtDateTime(d) {
+    return fmtDate(d) + " " + (d.getHours() < 10 ? "0" : "") + d.getHours() + ":" + (d.getMinutes() < 10 ? "0" : "") + d.getMinutes();
+  }
+
+  // 수업 날짜 자동 계산: 첫 수업일부터 7일 간격. 주차에 date를 적으면 그 날짜가 우선합니다.
+  var firstClass = parseDate(sched.firstClass) || new Date();
+  var weeks = cur.weeks;
+  var classMap = {}; // 날짜 → 주차
+  var dueMap = {};   // 날짜 → 과제 마감인 주차들
+  weeks.forEach(function (w, idx) {
+    w._date = parseDate(w.date)
+      || new Date(firstClass.getFullYear(), firstClass.getMonth(), firstClass.getDate() + 7 * idx);
+    w._time = w.time || sched.time;
+    w._place = w.location || sched.location;
+    classMap[dateKey(w._date)] = w;
+    if (w.assignment) {
+      w._due = parseDate(w.assignment.due) || w._date;
+      (dueMap[dateKey(w._due)] = dueMap[dateKey(w._due)] || []).push(w);
+    }
+  });
+
+  // 교육 영역(stage): 주차의 stage 이름으로 색·짧은 이름을 찾습니다.
+  var stages = cur.stages || [];
+  var stageMap = {};
+  stages.forEach(function (s) { stageMap[s.name] = s; });
+  function stageOf(w) { return (w && stageMap[w.stage]) || null; }
+  function stageStyle(w) { var s = stageOf(w); return s ? "--stage:" + s.color : ""; }
+  function stageTag(w) {
+    var s = stageOf(w);
+    return s ? h("span", { class: "tag tag-stage", style: "--stage:" + s.color }, s.short || s.name) : null;
+  }
+
+  // 달력에만 표시되는 일정(휴강·보강·행사 등). 관리자 로그인 뒤 달력에서 날짜를 눌러 관리합니다.
+  cur.events = cur.events || [];
+  var eventMap = {}; // 날짜 → 일정들
+  function buildEventMap() {
+    eventMap = {};
+    cur.events.forEach(function (ev) {
+      var d = parseDate(ev.date);
+      if (d) (eventMap[dateKey(d)] = eventMap[dateKey(d)] || []).push(ev);
+    });
+  }
+  buildEventMap();
+
+  // 승인받지 않은 사람에게 주차 내용 대신 보여 주는 안내
+  function lockedBox() {
+    var me = store.get("session", null);
+    return h("div", { class: "locked-box" }, [
+      h("b", {}, "🔒 승인된 수강생만 볼 수 있습니다"),
+      h("p", {}, me
+        ? "수강 신청은 접수되었고 관리자 승인을 기다리는 중입니다. 승인되면 학습 내용·강의 자료·참고 영상·과제가 보입니다."
+        : "수강 신청서를 내고 관리자 승인을 받은 뒤 로그인하면 학습 내용·강의 자료·참고 영상·과제가 보입니다."),
+      me ? null : h("div", { class: "meta-row" }, [
+        h("a", { class: "btn btn-primary btn-sm", href: "#apply" }, "수강 신청"),
+        (function () {
+          var b = h("button", { class: "btn btn-ghost btn-sm", type: "button" }, "수강생 로그인");
+          b.addEventListener("click", function () { openStudent(null); });
+          return b;
+        })(),
+      ]),
+    ]);
+  }
+
+  function dotList(items) {
+    return h("ul", { class: "dot-list" }, items.map(function (t) { return h("li", {}, t); }));
+  }
+
+  function assignmentBox(w) {
+    var a = w.assignment;
+    return h("div", { class: "assign" }, [
+      h("div", { class: "assign-head" }, [
+        h("h4", {}, "📝 " + a.title),
+        h("span", { class: "countdown", "data-due": String(w._due.getTime()) }),
+      ]),
+      h("p", {}, a.text),
+      h("p", { class: "assign-due" }, [h("b", {}, "마감 "), fmtDateTime(w._due)]),
+      (function () {
+        var url = a.submitUrl || sched.submitUrl || "#";
+        if (url.charAt(0) !== "#") { // 다른 사이트(LMS 등)로 제출하도록 정해 둔 과제
+          return h("a", { class: "btn btn-primary btn-sm", href: url, target: "_blank", rel: "noopener" }, "과제 제출하기");
+        }
+        // 이 사이트에서 제출: 팝업 창에서 구글 드라이브 공유 주소를 냅니다.
+        var b = h("button", { class: "btn btn-primary btn-sm", type: "button", "data-assign": w.week }, "과제 제출하기");
+        b.addEventListener("click", function () { openStudent(w.week); });
+        return b;
+      })(),
+    ]);
+  }
+
+  // YouTube 주소에서 영상 ID를 꺼냅니다. YouTube 주소가 아니면 "".
+  function youtubeId(url) {
+    var m = /(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|shorts\/|live\/))([\w-]{11})/.exec(url || "");
+    return m ? m[1] : "";
+  }
+  // 주차 안 묶음 제목: 아이콘 + 이름 + 개수
+  function blockHead(icon, title, count) {
+    return h("h4", {}, [h("span", { class: "wd-ico", "aria-hidden": "true" }, icon), title, count ? h("span", { class: "wd-count" }, count + "개") : null]);
+  }
+  // 강의 자료(구글 드라이브 링크)
+  function materialsBlock(w) {
+    var list = (w.materials || []).filter(function (m) { return m && m.url; });
+    if (!list.length) return null;
+    return h("section", { class: "wd-block" }, [
+      blockHead("📎", "강의 자료", list.length),
+      h("div", { class: "file-list" }, list.map(function (m) {
+        var kind = /\/folders\//.test(m.url) ? "📁" : /\/presentation\//.test(m.url) ? "📽️" : /\/spreadsheets\//.test(m.url) ? "📊" : "📄";
+        return h("a", { class: "file-row", href: m.url, target: "_blank", rel: "noopener" }, [
+          h("span", { class: "file-ico", "aria-hidden": "true" }, kind),
+          h("span", { class: "file-name" }, m.label || "강의 자료"),
+          h("span", { class: "file-open" }, "열기 ↗"),
+        ]);
+      })),
+    ]);
+  }
+  // 참고 영상: YouTube 주소면 그 자리에서 재생(embed), 아니면 링크
+  function videosBlock(w) {
+    var list = (w.videos || []).filter(function (v) { return v && v.url; });
+    if (!list.length) return null;
+    var embeds = list.filter(function (v) { return youtubeId(v.url); });
+    var links = list.filter(function (v) { return !youtubeId(v.url); });
+    return h("section", { class: "wd-block" }, [
+      blockHead("▶", "참고 영상", list.length),
+      embeds.length ? h("div", { class: "video-grid" }, embeds.map(function (v) {
+        // 영상은 주차를 펼쳤을 때 불러옵니다(data-yt → iframe).
+        return h("figure", { class: "video-item" }, [
+          h("div", { class: "video-frame", "data-yt": youtubeId(v.url), "data-title": v.label || "참고 영상" }),
+          v.label ? h("figcaption", {}, v.label) : null,
+        ]);
+      })) : null,
+      links.length ? h("div", { class: "meta-row" }, links.map(function (v) {
+        return h("a", { class: "contact video-link", href: v.url, target: "_blank", rel: "noopener" }, [
+          h("span", { "aria-hidden": "true" }, "▶"), v.label || v.url,
+        ]);
+      })) : null,
+    ]);
+  }
+  /* HTML 코드(embed): 관리자가 넣은 HTML을 주차 안에서 바로 보여 줍니다.
+   * - 코드가 <iframe> 태그뿐이면(구글 슬라이드·Canva·지도 등의 '퍼가기' 코드) 그 주소를 그대로 띄웁니다.
+   * - 그 밖의 HTML은 격리된 틀(sandbox) 안에서 실행합니다. 이 사이트의 로그인 정보·저장소에는 접근할 수 없습니다. */
+  function embedsBlock(w) {
+    var list = (w.embeds || []).filter(function (e) { return e && String(e.html || "").trim(); });
+    if (!list.length) return null;
+    return h("section", { class: "wd-block" }, [
+      blockHead("🧩", "실습·참고 콘텐츠", list.length),
+      h("div", { class: "embed-list" }, list.map(function (e) {
+        var box = h("div", { class: "embed-box" });
+        box._html = String(e.html); // 주차를 펼쳤을 때 불러옵니다.
+        return h("figure", { class: "embed-item" }, [box, e.label ? h("figcaption", {}, e.label) : null]);
+      })),
+    ]);
+  }
+  var EMBED_RESIZE = "<script>(function(){function s(){var b=document.body;if(!b)return;parent.postMessage({kuEmbedHeight:Math.ceil(Math.max(b.scrollHeight,b.offsetHeight,document.documentElement.offsetHeight))+2},'*')}s();addEventListener('load',s);if(window.ResizeObserver)new ResizeObserver(s).observe(document.body);setTimeout(s,800);})()<" + "/script>";
+  var EMBED_SCALE = 0.3; // 직접 만든 HTML(embed)을 내용 높이의 몇 배로 보여 줄지
+  function buildEmbed(html, title) {
+    var tpl = document.createElement("template");
+    tpl.innerHTML = html; // template 안에서는 스크립트가 실행되지 않습니다(구조 확인용).
+    var nodes = [].filter.call(tpl.content.childNodes, function (n) { return n.nodeType === 1 || (n.nodeType === 3 && n.textContent.trim()); });
+    var onlyFrames = nodes.length && nodes.every(function (n) { return n.nodeType === 1 && n.tagName === "IFRAME" && /^https:\/\//i.test(n.getAttribute("src") || ""); });
+    if (onlyFrames) {
+      return nodes.map(function (n) {
+        var px = parseInt(n.getAttribute("height"), 10);
+        var frame = h("iframe", {
+          class: "embed-frame" + (px ? "" : " ratio"), src: n.getAttribute("src"), title: n.getAttribute("title") || title, loading: "lazy",
+          allowfullscreen: "allowfullscreen", referrerpolicy: "strict-origin-when-cross-origin",
+          allow: n.getAttribute("allow") || "autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture; web-share",
+        });
+        if (px) frame.style.height = Math.min(Math.max(px, 120), 2000) + "px";
+        return frame;
+      });
+    }
+    var whole = /<html[\s>]|<!doctype/i.test(html);
+    var doc = whole ? html + EMBED_RESIZE
+      : '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><base target="_blank">' +
+        '<style>html,body{margin:0}body{display:flow-root;padding:2px 4px;font-family:"Noto Sans KR",system-ui,sans-serif;line-height:1.6;color:#1b1b1b;overflow-wrap:anywhere}img,video,iframe,table{max-width:100%}</style></head><body>' +
+        html + EMBED_RESIZE + "</body></html>";
+    return [h("iframe", {
+      class: "embed-frame auto", srcdoc: doc, title: title, loading: "lazy",
+      sandbox: "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox", // allow-same-origin은 주지 않습니다.
+    })];
+  }
+  function loadEmbeds(root) {
+    [].forEach.call(root.querySelectorAll(".embed-box"), function (box) {
+      if (!box._html) return;
+      var cap = box.parentNode.querySelector("figcaption");
+      buildEmbed(box._html, cap ? cap.textContent : "실습·참고 콘텐츠").forEach(function (f) { box.appendChild(f); });
+      box._html = null;
+    });
+  }
+  // 격리된 틀이 알려 주는 내용 높이에 맞춰 틀 높이를 조절합니다.
+  window.addEventListener("message", function (e) {
+    var px = e.data && e.data.kuEmbedHeight;
+    if (typeof px !== "number" || !isFinite(px)) return;
+    [].forEach.call(document.querySelectorAll("iframe.embed-frame.auto"), function (f) {
+      if (f.contentWindow !== e.source) return;
+      // 내용 전체 높이의 30%만 보여 주고 나머지는 틀 안에서 스크롤합니다(너무 낮아지지 않게 최소 200px, 내용이 그보다 짧으면 내용 높이).
+      var full = Math.min(Math.max(px, 60), 3000);
+      f.style.height = Math.min(full, Math.max(Math.round(full * EMBED_SCALE), 200)) + "px";
+    });
+  });
+  function loadVideos(root) {
+    [].forEach.call(root.querySelectorAll(".video-frame[data-yt]"), function (box) {
+      box.appendChild(h("iframe", {
+        src: "https://www.youtube-nocookie.com/embed/" + box.getAttribute("data-yt"),
+        title: box.getAttribute("data-title"), loading: "lazy", allowfullscreen: "allowfullscreen",
+        allow: "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share",
+        referrerpolicy: "strict-origin-when-cross-origin",
+      }));
+      box.removeAttribute("data-yt");
+    });
+  }
+
+  // 다음 수업: 오늘을 포함해 가장 가까운 수업일의 주차
+  var day0 = new Date(); day0.setHours(0, 0, 0, 0); // 오늘 0시
+  var nextWeek = weeks.filter(function (w) { return w._date.getTime() >= day0.getTime(); })[0] || null;
+  function hasUrl(x) { return x && x.url; }
+  // 주차 제목 아래: 그 주차에 무엇이 들어 있는지 한눈에
+  function weekBadges(w) {
+    if (w.locked) return null;
+    var items = [
+      [(w.topics || []).length, "📚", "학습 내용"],
+      [(w.materials || []).filter(hasUrl).length, "📎", "강의 자료"],
+      [(w.videos || []).filter(hasUrl).length, "▶", "영상"],
+      [(w.embeds || []).filter(function (e) { return e && String(e.html || "").trim(); }).length, "🧩", "실습"],
+    ].filter(function (x) { return x[0]; });
+    if (!items.length) return null;
+    return h("div", { class: "week-badges" }, items.map(function (x) {
+      return h("span", { class: "wb", title: x[2] + " " + x[0] + "개" }, [h("span", { "aria-hidden": "true" }, x[1]), x[2] + " " + x[0]]);
+    }));
+  }
+  // 실습 활동·과제와 주차별 결과물 (엑셀 교육계획의 두 칸)
+  function practiceBlock(w) {
+    if (!w.practice && !w.outcome) return null;
+    return h("div", { class: "wd-practice" }, [
+      w.practice ? h("div", { class: "wd-pr" }, [h("small", {}, "✍️ 실습 활동·과제"), h("p", {}, w.practice)]) : null,
+      w.outcome ? h("div", { class: "wd-pr" }, [h("small", {}, "🏅 주차별 결과물"), h("p", {}, w.outcome)]) : null,
+    ]);
+  }
+  function fact(icon, label, value) {
+    return h("div", { class: "wd-fact" }, [h("span", { class: "wd-fact-ico", "aria-hidden": "true" }, icon), h("span", {}, [h("small", {}, label), h("b", {}, value)])]);
+  }
+  var weekList = h("div", { class: "week-list" }, weeks.map(function (w) {
+    var isNext = w === nextWeek;
+    var isPast = !isNext && w._date.getTime() < day0.getTime();
+    var materials = w.locked ? null : materialsBlock(w);
+    return h("details", {
+      class: "card week-item reveal" + (isNext ? " is-next" : "") + (isPast ? " is-past" : "") + (stageOf(w) ? " has-stage" : ""),
+      id: "week-" + w.week, style: stageStyle(w), "data-stage": w.stage || "",
+    }, [
+      h("summary", {}, [
+        h("div", { class: "week-num" }, [h("span", {}, [h("b", {}, w.week), "주차"])]),
+        h("div", { class: "week-sum" }, [
+          h("h3", {}, [
+            w.title,
+            isNext ? h("span", { class: "tag tag-now" }, w._date.getTime() === day0.getTime() ? "오늘 수업" : "다음 수업") : null,
+            stageTag(w),
+            w.tag ? h("span", { class: "tag" }, w.tag) : null,
+            w.assignment ? h("span", { class: "tag tag-assign" }, "과제") : null,
+          ]),
+          h("div", { class: "week-when" }, fmtShort(w._date) + " · " + w._time + " · " + w._place),
+          weekBadges(w),
+        ]),
+      ]),
+      h("div", { class: "week-detail" }, [
+        h("div", { class: "wd-top" }, [
+          h("div", { class: "wd-facts" }, [fact("🗓️", "날짜", fmtDate(w._date)), fact("⏰", "시간", w._time), fact("📍", "장소", w._place)]),
+          w.locked ? null : h("div", { class: "att-slot", "data-week": String(w.week) }),
+        ]),
+        w.locked ? lockedBox() : h("div", { class: "wd-grid" + (materials ? "" : " single") }, [
+          h("section", { class: "wd-block" }, [
+            blockHead("📚", "학습 내용", (w.topics || []).length),
+            (w.topics || []).length ? h("ol", { class: "topic-list" }, w.topics.map(function (t) { return h("li", {}, t); })) : h("p", { class: "wd-empty" }, "등록된 학습 내용이 없습니다."),
+          ]),
+          materials,
+        ]),
+        w.locked ? null : practiceBlock(w),
+        w.locked ? null : videosBlock(w),
+        w.locked ? null : embedsBlock(w),
+        w.locked || !w.assignment ? null : assignmentBox(w),
+      ]),
+    ]);
+  }));
+
+  [].forEach.call(weekList.children, function (item) {
+    item.addEventListener("toggle", function () { if (item.open) { loadVideos(item); loadEmbeds(item); } });
+  });
+
+  // 교육 영역별 보기: 버튼을 누르면 그 영역의 주차만 보여 줍니다.
+  var stageFilter = null;
+  if (stages.length) {
+    var filterBtns = [];
+    var setFilter = function (name) {
+      filterBtns.forEach(function (b) { b.setAttribute("aria-pressed", String(b._stage === name)); });
+      [].forEach.call(weekList.children, function (item) {
+        item.hidden = !!name && item.getAttribute("data-stage") !== name;
+      });
+    };
+    stageFilter = h("div", { class: "stage-filter reveal", role: "group", "aria-label": "교육 영역별 보기" },
+      [{ name: "", short: "전체 " + weeks.length + "주" }].concat(stages).map(function (s) {
+        var n = s.name ? weeks.filter(function (w) { return w.stage === s.name; }).length : 0;
+        var b = h("button", { class: "stage-btn", type: "button", style: s.color ? "--stage:" + s.color : "", "aria-pressed": String(!s.name) },
+          [s.short || s.name, n ? h("small", {}, n + "회") : null]);
+        b._stage = s.name;
+        b.title = s.name || "모든 주차";
+        b.addEventListener("click", function () { setFilter(s.name); });
+        filterBtns.push(b);
+        return b;
+      }));
+  }
+
+  /* 월간 달력 */
+  var calTitle = h("h4", { class: "cal-title", "aria-live": "polite" });
+  var calGrid = h("div", { class: "cal-grid" });
+  var calDetail = h("div", { class: "card cal-detail", "aria-live": "polite" });
+  var calPrev = h("button", { class: "slider-btn cal-btn", type: "button", "aria-label": "이전 달" }, "‹");
+  var calNext = h("button", { class: "slider-btn cal-btn", type: "button", "aria-label": "다음 달" }, "›");
+  var calToday = h("button", { class: "cal-today", type: "button" }, "오늘");
+
+  var studentBar = h("div", { class: "card student-bar reveal" }); // 수강생 로그인 상태 (아래 renderStudentBar에서 채움)
+  // 달력을 위에, 주차 목록을 아래에 둡니다(일정을 먼저 보도록).
+  var curEl = section(cur, [
+    h("h3", { class: "sub-title reveal", id: "calendar" }, cur.calendarTitle),
+    h("div", { class: "cal-wrap reveal" }, [
+      h("div", { class: "card cal" }, [
+        h("div", { class: "cal-head" }, [calPrev, h("div", { class: "cal-head-mid" }, [calTitle, calToday]), calNext]),
+        calGrid,
+        h("div", { class: "cal-legend" }, (stages.length
+          ? stages.map(function (s) { return h("span", { title: s.name }, [h("i", { class: "lg lg-stage", style: "--stage:" + s.color }), s.short || s.name]); })
+          : [h("span", {}, [h("i", { class: "lg lg-class" }), "수업"])]
+        ).concat([
+          h("span", {}, [h("i", { class: "lg lg-due" }), "과제 마감"]),
+          h("span", {}, [h("i", { class: "lg lg-event" }), "일정"]),
+          h("span", {}, [h("i", { class: "lg lg-today" }), "오늘"]),
+        ])),
+      ]),
+      calDetail,
+    ]),
+    h("h3", { class: "sub-title gap-top reveal", id: "weeks-title" }, cur.weeksTitle),
+    studentBar,
+    FULL ? null : notice("주차별 학습 내용은 관리자가 승인한 수강생에게만 공개됩니다. 주차 제목과 일정만 표시됩니다."),
+    stageFilter,
+    weekList,
+    cur.projects && cur.projects.length ? h("h3", { class: "sub-title gap-top reveal" }, cur.projectsTitle) : null,
+    cur.projects && cur.projects.length ? h("div", { class: "card reveal" }, [
+      cur.projectsLead ? h("p", { class: "goals-lead" }, cur.projectsLead) : null,
+      h("ul", { class: "chip-list" }, cur.projects.map(function (p) { return h("li", {}, p); })),
+      cur.projectsNote ? h("p", { class: "card-note" }, cur.projectsNote) : null,
+    ]) : null,
+  ]);
+
+  var now = new Date();
+  var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  // 처음 보여 줄 날: 다가오는 가장 가까운 수업(없으면 1주차)
+  var focusWeek = weeks.filter(function (w) { return w._date >= todayStart; })[0] || weeks[0];
+  var selected = focusWeek._date;
+  var viewY = selected.getFullYear();
+  var viewM = selected.getMonth();
+
+  function openWeek(w) {
+    var el = document.getElementById("week-" + w.week);
+    el.hidden = false; // 영역별 보기로 숨겨져 있어도 엽니다.
+    el.open = true;
+    el.classList.add("in");
+    el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+  }
+
+  function renderDetail() {
+    var w = classMap[dateKey(selected)];
+    var dues = dueMap[dateKey(selected)] || [];
+    var events = eventMap[dateKey(selected)] || [];
+    calDetail.textContent = "";
+    calDetail.appendChild(h("div", { class: "cal-detail-date" }, fmtDate(selected)));
+    events.forEach(function (ev) {
+      calDetail.appendChild(h("div", { class: "cal-event" }, [
+        h("div", { class: "board-head" }, [ev.type ? h("span", { class: "tag tag-event" }, ev.type) : null, h("b", {}, ev.title)]),
+        ev.text ? h("p", {}, ev.text) : null,
+      ]));
+    });
+    if (w) {
+      var more = h("button", { class: "btn btn-ghost btn-sm", type: "button" }, "커리큘럼에서 자세히 보기");
+      more.addEventListener("click", function () { openWeek(w); });
+      [
+        stageOf(w) ? h("div", { class: "cal-stage" }, [stageTag(w), h("span", {}, w.stage)]) : null,
+        h("h4", {}, w.week + "주차 · " + w.title),
+        h("div", { class: "meta-row" }, [
+          h("span", { class: "contact" }, [h("span", { "aria-hidden": "true" }, "⏰"), w._time]),
+          h("span", { class: "contact" }, [h("span", { "aria-hidden": "true" }, "📍"), w._place]),
+        ]),
+        w.locked ? h("p", { class: "cal-note" }, "🔒 학습 내용은 승인된 수강생만 볼 수 있습니다.") : dotList(w.topics || []),
+        w.locked ? null : practiceBlock(w),
+        w.assignment ? h("p", { class: "cal-note" }, "📝 과제: " + w.assignment.title + " (마감 " + fmtDateTime(w._due) + ")") : null,
+        more,
+      ].forEach(function (el) { if (el) calDetail.appendChild(el); });
+    } else if (!dues.length && !events.length) {
+      calDetail.appendChild(h("p", { class: "cal-empty" }, "수업이 없는 날입니다. 색이 칠해진 날짜를 눌러 보세요."));
+    }
+    dues.forEach(function (dw) {
+      var go = h("button", { class: "btn btn-ghost btn-sm", type: "button" }, dw.week + "주차 과제 보기");
+      go.addEventListener("click", function () { openWeek(dw); });
+      calDetail.appendChild(h("div", { class: "assign" }, [
+        h("div", { class: "assign-head" }, [
+          h("h4", {}, "📝 과제 마감일"),
+          h("span", { class: "countdown", "data-due": String(dw._due.getTime()) }),
+        ]),
+        h("p", {}, dw.week + "주차 · " + dw.assignment.title),
+        h("p", { class: "assign-due" }, [h("b", {}, "마감 "), fmtDateTime(dw._due)]),
+        go,
+      ]));
+    });
+    // 관리자 로그인 중이면 이 자리에 일정 추가·수정·삭제 도구가 붙습니다(admin.js).
+    if (window.KU && window.KU.onCalDetail) window.KU.onCalDetail(calDetail, selected);
+    updateCountdowns();
+  }
+
+  function renderCalendar() {
+    calTitle.textContent = viewY + "년 " + (viewM + 1) + "월";
+    calGrid.textContent = "";
+    DOW.forEach(function (d) { calGrid.appendChild(h("div", { class: "cal-dow" }, d)); });
+    var lead = new Date(viewY, viewM, 1).getDay();
+    for (var b = 0; b < lead; b++) calGrid.appendChild(h("div", {}));
+    var last = new Date(viewY, viewM + 1, 0).getDate();
+    for (var day = 1; day <= last; day++) {
+      (function (d) {
+        var k = dateKey(d);
+        var w = classMap[k];
+        var evs = eventMap[k];
+        var cls = "cal-day" + (w ? " has-class" : "") + (dueMap[k] ? " has-due" : "") + (evs ? " has-event" : "") +
+          (k === dateKey(todayStart) ? " today" : "") + (k === dateKey(selected) ? " selected" : "");
+        var label = fmtShort(d) + (w ? ", " + w.week + "주차 수업" : "") + (dueMap[k] ? ", 과제 마감" : "") +
+          (evs ? ", 일정: " + evs.map(function (ev) { return ev.title; }).join(", ") : "");
+        if (w && stageOf(w)) { cls += " has-stage"; label += " (" + w.stage + ")"; }
+        var btn = h("button", { class: cls, type: "button", style: w ? stageStyle(w) : "", "aria-label": label, "aria-pressed": String(k === dateKey(selected)) }, [
+          h("span", {}, d.getDate()),
+          w ? h("span", { class: "cal-wk" }, w.week + "주차") : null,
+          evs ? h("i", { class: "cal-ev-dot", "aria-hidden": "true" }) : null,
+        ]);
+        btn.addEventListener("click", function () { selected = d; renderCalendar(); renderDetail(); });
+        calGrid.appendChild(btn);
+      })(new Date(viewY, viewM, day));
+    }
+  }
+  function moveMonth(diff) {
+    var d = new Date(viewY, viewM + diff, 1);
+    viewY = d.getFullYear(); viewM = d.getMonth();
+    renderCalendar();
+  }
+  calPrev.addEventListener("click", function () { moveMonth(-1); });
+  calNext.addEventListener("click", function () { moveMonth(1); });
+  calToday.addEventListener("click", function () {
+    selected = todayStart; viewY = todayStart.getFullYear(); viewM = todayStart.getMonth();
+    renderCalendar(); renderDetail();
+  });
+
+  /* 마감까지 남은 시간 */
+  function updateCountdowns() {
+    var t = Date.now();
+    [].forEach.call(document.querySelectorAll("[data-due]"), function (el) {
+      var left = Number(el.getAttribute("data-due")) - t;
+      var mins = Math.floor(left / 60000);
+      var days = Math.floor(mins / 1440);
+      var hours = Math.floor((mins % 1440) / 60);
+      var text;
+      if (left <= 0) text = "마감되었습니다";
+      else if (days >= 1) text = "D-" + days + " · " + days + "일 " + hours + "시간 남음";
+      else if (mins >= 60) text = "오늘 마감 · " + hours + "시간 " + (mins % 60) + "분 남음";
+      else text = "곧 마감 · " + Math.max(1, mins) + "분 남음";
+      el.textContent = text;
+      el.classList.toggle("closed", left <= 0);
+      el.classList.toggle("urgent", left > 0 && days < 3);
+    });
+  }
+
+  /* ── 포트폴리오: 우수 과제물 (구글 드라이브 주소로 등록) ── */
+  // 드라이브 주소에서 파일(폴더) ID를 꺼냅니다. 드라이브 주소가 아니면 "".
+  function driveId(url) {
+    var m = /^https:\/\/(?:drive|docs)\.google\.com\/.*?(?:\/d\/|\/folders\/|[?&]id=)([\w-]{10,})/.exec(url || "");
+    return m ? m[1] : "";
+  }
+  var folio = C.portfolio;
+  var COVER_ICON = { "웹앱": "📱", "대시보드": "📈", "웹페이지": "📄" };
+  var folioBox = h("div", { class: "folio-box" });
+  var folioDrawn = false;
+  // 카드 목록 그리기. 관리자가 추가·수정·삭제하면 다시 불립니다.
+  function renderFolio() {
+    folioBox.textContent = "";
+    var grid = h("div", { class: "grid grid-3" }, folio.items.map(function (it, idx) {
+      var id = driveId(it.driveUrl);
+      var sample = id.indexOf("SAMPLE") === 0;
+      var isFolder = /\/folders\//.test(it.driveUrl);
+      var cover = h("div", { class: "folio-cover" }, [
+        h("span", { class: "folio-icon", "aria-hidden": "true" }, COVER_ICON[it.category] || "🗂️"),
+        it.category ? h("span", { class: "tag folio-cat" }, it.category) : null,
+        sample ? h("span", { class: "tag folio-sample" }, "샘플") : null,
+      ]);
+      if (id && !sample && !isFolder) {
+        var img = h("img", { src: "https://drive.google.com/thumbnail?id=" + id + "&sz=w640", alt: "", loading: "lazy", referrerpolicy: "no-referrer" });
+        img.addEventListener("error", function () { img.remove(); }); // 미리 보기 그림이 없으면 아이콘만
+        cover.insertBefore(img, cover.firstChild);
+      }
+      var card = h("article", { class: "card lift folio reveal" + (folioDrawn ? " in" : "") }, [
+        cover,
+        h("div", { class: "folio-body" }, [
+          h("h3", {}, it.title),
+          h("p", { class: "sub-meta" }, [it.student, it.term].filter(Boolean).join(" · ")),
+          it.description ? h("p", { class: "folio-desc" }, it.description) : null,
+          id && !sample
+            ? h("a", { class: "btn btn-ghost btn-sm", href: it.driveUrl, target: "_blank", rel: "noopener" }, folio.buttonLabel + " ↗")
+            : h("span", { class: "btn btn-ghost btn-sm folio-off" }, sample ? "샘플 자료 (링크 없음)" : "주소를 확인해 주세요"),
+        ]),
+      ]);
+      // 관리자 로그인 중이면 카드에 수정·삭제 버튼이 붙습니다(admin.js).
+      if (window.KU && window.KU.onFolioCard) window.KU.onFolioCard(cover, idx);
+      return card;
+    }));
+    // 관리자 로그인 중이면 맨 끝에 '추가' 칸이 붙습니다(admin.js).
+    var extra = window.KU && window.KU.onFolioGrid && window.KU.onFolioGrid(grid);
+    folioBox.appendChild(folio.items.length || extra ? grid : h("p", { class: "cal-empty folio-empty" }, folio.emptyText));
+    folioDrawn = true;
+  }
+  renderFolio();
+  var folioEl = section(folio, [folioBox]);
+
+  /* ── 수강 안내: 도구 · 평가 · 참고자료 · 준비물 ── */
+  var guide = C.guide;
+  var guideBox = h("div", { class: "guide-box" });
+  var guideDrawn = false;
+  // 관리자가 카드를 추가·수정·삭제하면 다시 불립니다. 관리자용 버튼은 admin.js가 붙입니다.
+  function renderGuide() {
+    var K = window.KU || {};
+    var adminOn = !!(K.adminOn && K.adminOn());
+    var rv = " reveal" + (guideDrawn ? " in" : "");
+    function hook(name, el, kind, idx) { if (K[name]) K[name](el, kind, idx); return el; }
+
+    var toolGrid = h("div", { class: "grid grid-3" }, guide.tools.map(function (t, idx) {
+      return hook("onGuideCard", h("div", { class: "card lift tool" + rv }, [
+        h("div", { class: "tool-top" }, [
+          iconBubble(t.icon),
+          h("div", {}, [
+            h("h4", {}, t.name),
+            t.category ? h("span", { class: "tag" }, t.category) : null,
+          ]),
+        ]),
+        h("p", {}, t.text),
+      ]), "tools", idx);
+    }));
+    hook("onGuideGrid", toolGrid, "tools");
+
+    var grading = guide.grading || [];
+    var refs = guide.references || [];
+    var extraGrid = h("div", { class: "grid grid-2 guide-extra" }, [
+      grading.length || adminOn ? hook("onGuideBox", h("div", { class: "card guide-card" + rv }, [
+        h("h3", { class: "card-title" }, "📊 " + guide.gradingTitle),
+      ].concat(grading.map(function (g) {
+        return h("div", { class: "bar-row" }, [
+          h("div", { class: "bar-top" }, [h("span", {}, g.label), h("b", {}, g.percent + (guide.gradingUnit || "%"))]),
+          h("div", { class: "bar" }, [h("div", { class: "bar-fill", style: "width:" + Math.max(0, Math.min(100, g.percent * 100 / (guide.gradingTotal || 100))) + "%" })]),
+        ]);
+      })).concat([guide.gradingNote ? h("p", { class: "card-note" }, guide.gradingNote) : null])), "grading") : null,
+      refs.length || adminOn ? hook("onGuideBox", h("div", { class: "card guide-card" + rv }, [
+        h("h3", { class: "card-title" }, "📚 " + guide.referencesTitle),
+        guide.referencesLead ? h("p", { class: "goals-lead" }, guide.referencesLead) : null,
+        h("ul", { class: "chip-list" }, refs.map(function (r) {
+          return h("li", {}, r.href ? h("a", { href: r.href, target: "_blank", rel: "noopener" }, r.label) : r.label);
+        })),
+        guide.referencesNote ? h("p", { class: "card-note" }, guide.referencesNote) : null,
+      ]), "references") : null,
+    ]);
+
+    var prepGrid = h("div", { class: "grid grid-2" }, guide.prep.map(function (p, idx) {
+      return hook("onGuideCard", h("div", { class: "card lift prep" + rv }, [
+        iconBubble(p.icon),
+        h("div", {}, [
+          h("h4", {}, p.title),
+          h("p", {}, p.text),
+        ]),
+      ]), "prep", idx);
+    }));
+    hook("onGuideGrid", prepGrid, "prep");
+
+    guideBox.textContent = "";
+    [
+      h("h3", { class: "sub-title" + rv }, guide.toolsTitle),
+      toolGrid,
+      extraGrid,
+      h("h3", { class: "sub-title gap-top" + rv }, guide.prepTitle),
+      prepGrid,
+    ].forEach(function (el) { guideBox.appendChild(el); });
+    guideDrawn = true;
+  }
+  renderGuide();
+  var guideEl = section(guide, [guideBox]);
+
+  /* ── FAQ ── */
+  var faq = C.faq;
+  var faqEl = section(faq, [
+    h("div", { class: "faq-list" }, faq.items.map(function (it) {
+      return h("details", { class: "card faq-item reveal" }, [
+        h("summary", {}, it.q),
+        h("div", { class: "faq-answer" }, it.a),
+      ]);
+    })),
+  ]);
+
+  /* ── 참여 기능 공통: 입력 폼(빠진 항목 검사 포함) ── */
+  var uid = 0;
+  function makeForm(fieldCfgs, submitLabel, onValid) {
+    var alertBox = h("div", { class: "form-alert", role: "alert", hidden: "hidden" });
+    var fields = fieldCfgs.map(function (f) {
+      var id = "f" + (++uid);
+      var attrs = { id: id, name: f.name, placeholder: f.placeholder, "aria-describedby": id + "-err" };
+      var input, wrap;
+      var err = h("p", { class: "field-error", id: id + "-err" });
+      var star = f.required ? h("span", { class: "req", title: "필수" }, " *") : null;
+
+      if (f.type === "checkbox") {
+        attrs.type = "checkbox";
+        input = h("input", attrs);
+        wrap = h("div", { class: "field field-check" }, [h("label", { for: id }, [input, h("span", {}, [f.label, star])]), err]);
+      } else {
+        if (f.type === "select") {
+          var blank = h("option", {}, f.placeholder || "선택해 주세요");
+          blank.value = "";
+          input = h("select", attrs, [blank].concat(f.options.map(function (o) {
+            var opt = typeof o === "string" ? { value: o, label: o } : o;
+            return h("option", { value: opt.value }, opt.label);
+          })));
+        } else if (f.type === "textarea") {
+          attrs.rows = 4;
+          input = h("textarea", attrs);
+        } else {
+          attrs.type = f.type || "text";
+          attrs.accept = f.accept;
+          attrs.autocomplete = f.type === "password" ? "off" : "";
+          input = h("input", attrs);
+        }
+        wrap = h("div", { class: "field" + (f.wide || f.type === "textarea" || f.type === "file" ? " wide" : "") }, [
+          h("label", { for: id }, [f.label, star]),
+          input,
+          f.hint ? h("p", { class: "field-hint" }, f.hint) : null,
+          err,
+        ]);
+      }
+      var field = { cfg: f, input: input, wrap: wrap, err: err };
+      input.addEventListener(f.type === "checkbox" || f.type === "select" || f.type === "file" ? "change" : "input", function () {
+        if (wrap.classList.contains("invalid")) setError(field, check(field));
+      });
+      return field;
+    });
+
+    function value(field) {
+      var t = field.cfg.type;
+      if (t === "checkbox") return field.input.checked;
+      if (t === "file") return field.input.files[0] || null;
+      return field.input.value.trim();
+    }
+    function check(field) {
+      var f = field.cfg, v = value(field), quoted = "'" + f.label + "'";
+      if (f.type === "checkbox") return f.required && !v ? "동의가 필요합니다." : "";
+      if (f.type === "file") {
+        if (!v) return f.required ? "파일을 선택해 주세요." : "";
+        if (f.maxMB && v.size > f.maxMB * 1024 * 1024) return "파일이 너무 큽니다. " + f.maxMB + "MB 이하만 제출할 수 있습니다.";
+        if (f.accept) {
+          var ext = v.name.slice(v.name.lastIndexOf(".")).toLowerCase();
+          if (f.accept.toLowerCase().split(",").indexOf(ext) < 0) return "제출할 수 없는 형식입니다. (" + f.accept + ")";
+        }
+        return "";
+      }
+      if (v === "") return f.required ? quoted + " 항목을 " + (f.type === "select" ? "선택" : "입력") + "해 주세요." : "";
+      if (f.type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return "이메일 형식을 확인해 주세요.";
+      if (f.pattern && !new RegExp(f.pattern).test(v)) return f.patternMsg || quoted + " 형식을 확인해 주세요.";
+      return "";
+    }
+    function setError(field, msg) {
+      field.err.textContent = msg;
+      field.wrap.classList.toggle("invalid", !!msg);
+      field.input.setAttribute("aria-invalid", String(!!msg));
+    }
+    function showAlert(bad) {
+      alertBox.hidden = !bad.length;
+      if (!bad.length) return;
+      alertBox.textContent = "빠지거나 잘못된 항목이 있습니다: " +
+        bad.map(function (b) { return b.cfg.type === "checkbox" ? "동의" : b.cfg.label; }).join(", ");
+      bad[0].input.focus();
+    }
+
+    var form = h("form", { class: "form", novalidate: "novalidate" }, [
+      alertBox,
+      h("div", { class: "form-grid" }, fields.map(function (f) { return f.wrap; })),
+      h("button", { class: "btn btn-primary", type: "submit" }, submitLabel),
+    ]);
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var values = {};
+      var bad = fields.filter(function (field) {
+        var msg = check(field);
+        setError(field, msg);
+        values[field.cfg.name] = value(field);
+        return !!msg;
+      });
+      showAlert(bad);
+      if (bad.length) return;
+      onValid(values, {
+        // 제출 뒤에 특정 항목을 오류로 표시(예: 수강 코드 불일치)
+        fail: function (name, msg) {
+          var field = fields.filter(function (x) { return x.cfg.name === name; })[0];
+          setError(field, msg);
+          showAlert([field]);
+        },
+        error: function (msg) { alertBox.hidden = false; alertBox.textContent = msg; },
+      });
+    });
+    form.setValue = function (name, v) {
+      fields.forEach(function (x) {
+        if (x.cfg.name !== name) return;
+        if (x.cfg.type === "checkbox") x.input.checked = !!v; else x.input.value = v;
+      });
+    };
+    return form;
+  }
+
+  function notice(text) {
+    return text ? h("p", { class: "notice" }, [h("span", { "aria-hidden": "true" }, "ℹ️ "), text]) : null;
+  }
+  function fmtStamp(ms) { return fmtDateTime(new Date(ms)); }
+
+  /* ── 참여하기: 설문 ── 여러 개를 둘 수 있고, '진행 중'인 설문만 화면에 보입니다. */
+  var join = C.participate;
+  // 예전 설정(poll 하나)은 새 형식(polls 목록)으로 바꿔 읽습니다.
+  if (!join.polls) {
+    join.polls = join.poll
+      ? [{ id: "p1", title: join.poll.title, help: join.poll.help, options: join.poll.options, createdAt: "", open: true }] : [];
+  }
+  join.pollsTitle = join.pollsTitle || "설문";
+
+  // 응답 저장 모양: { 설문 id: { 참여자: 고른 보기 번호 } }
+  var oldVotes = store.get("poll", null);
+  if (oldVotes && !store.get("pollVotes", null) && join.polls[0]) {
+    var moved = {};
+    moved[join.polls[0].id] = oldVotes;
+    store.set("pollVotes", moved);
+  }
+
+  function voterId() {
+    var s = store.get("session", null);
+    if (s) return "s:" + s.id;
+    var g = store.get("guest", null);
+    if (!g) { g = "g:" + Math.random().toString(36).slice(2); store.set("guest", g); }
+    return g;
+  }
+  var remoteCounts = REMOTE ? (remote.polls || {}) : null; // 서버가 센 응답 수 { 설문 id: { 보기 번호: 수 } }
+  function pollStats(p) {
+    var votes = store.get("pollVotes", {})[p.id] || {};
+    var counts = p.options.map(function () { return 0; });
+    var total = 0;
+    if (REMOTE) {
+      var rc = remoteCounts[p.id] || {};
+      counts = counts.map(function (x, i) { var n = Number(rc[i]) || 0; total += n; return n; });
+    } else {
+      Object.keys(votes).forEach(function (k) {
+        if (votes[k] >= 0 && votes[k] < counts.length) { counts[votes[k]]++; total++; }
+      });
+    }
+    return { counts: counts, total: total, mine: votes[voterId()] };
+  }
+  // 설문 하나를 막대그래프 카드로 그립니다. readOnly면 결과만 보여 줍니다.
+  function pollCard(p, readOnly) {
+    var st = pollStats(p);
+    var top = Math.max.apply(null, st.counts.concat([0]));
+    var voted = st.mine !== undefined && st.mine < p.options.length;
+    return h("div", { class: "card poll" }, [
+      h("h4", { class: "poll-title" }, p.title),
+      p.help && !readOnly ? h("p", { class: "poll-help" }, p.help) : null,
+      h("div", { class: "poll-rows" }, p.options.map(function (label, idx) {
+        var pct = st.total ? Math.round((st.counts[idx] / st.total) * 100) : 0;
+        var row = h(readOnly ? "div" : "button", {
+          class: "poll-row" + (!readOnly && st.mine === idx ? " mine" : "") + (st.total > 0 && st.counts[idx] === top ? " top" : "") + (readOnly ? " static" : ""),
+          type: readOnly ? "" : "button",
+          "aria-pressed": readOnly ? "" : String(st.mine === idx),
+        }, [
+          h("span", { class: "poll-fill", style: "width:" + pct + "%" }),
+          h("span", { class: "poll-label" }, label),
+          h("span", { class: "poll-val" }, st.counts[idx] + "표 · " + pct + "%"),
+        ]);
+        if (!readOnly) row.addEventListener("click", function () {
+          var all = store.get("pollVotes", {});
+          (all[p.id] = all[p.id] || {})[voterId()] = idx;
+          store.set("pollVotes", all);
+          updatePoll();
+          if (REMOTE) {
+            call("POST", "poll/vote", { pollId: p.id, voter: voterId(), choice: idx })
+              .then(function (res) { remoteCounts = res.polls || {}; updatePoll(); })
+              .catch(function (err) { showToast(err.message); });
+          }
+        });
+        return row;
+      })),
+      h("p", { class: "poll-total", "aria-live": "polite" }, "총 " + st.total + "표" + (voted && !readOnly ? " · 내 선택: " + p.options[st.mine] : "")),
+    ]);
+  }
+  var pollBox = h("div", { class: "poll-box" });
+  var pollAdminBox = h("div", { class: "poll-admin-box" }); // 관리자용 설문 히스토리(설문 추가 칸 바로 아래)
+  function updatePoll() {
+    pollBox.textContent = "";
+    var open = join.polls.filter(function (p) { return p.open !== false; });
+    open.forEach(function (p) {
+      var card = pollCard(p);
+      // 관리자 로그인 중이면 카드에 숨기기·수정 버튼이 붙습니다(admin.js).
+      if (window.KU && window.KU.onPollCard) window.KU.onPollCard(card, p);
+      pollBox.appendChild(card);
+    });
+    if (!open.length) pollBox.appendChild(h("p", { class: "cal-empty" }, "진행 중인 설문이 없습니다."));
+    // 관리자 로그인 중이면 '설문 추가' 칸과 히스토리 표가 붙습니다(admin.js).
+    if (window.KU && window.KU.onPollsRender) window.KU.onPollsRender(pollBox, pollAdminBox);
+  }
+  // 다른 탭에서 투표해도 바로 반영
+  window.addEventListener("storage", function (e) { if (e.key === "kucourse:pollVotes") updatePoll(); });
+  // 서버에 모인 다른 사람들의 응답을 20초마다 다시 받아 옵니다.
+  if (REMOTE) {
+    setInterval(function () {
+      if (document.hidden) return;
+      call("GET", "polls").then(function (res) {
+        var next = res.polls || {};
+        if (JSON.stringify(next) !== JSON.stringify(remoteCounts)) { remoteCounts = next; updatePoll(); }
+      }).catch(function () { /* 다음 번에 다시 */ });
+    }, 20000);
+  }
+  // 화면 위쪽에 잠깐 뜨는 안내
+  function showToast(text) {
+    var t = h("div", { class: "toast", role: "status" }, text);
+    document.body.appendChild(t);
+    setTimeout(function () { t.classList.add("show"); }, 50);
+    setTimeout(function () { t.classList.remove("show"); }, 3600);
+    setTimeout(function () { t.remove(); }, 4200);
+  }
+
+  /* ── 참여하기: 수강 신청서 ── */
+  var apply = join.apply;
+  var applyBox = h("div", { class: "card", id: "apply-box" });
+  function renderApply() {
+    applyBox.textContent = "";
+    var saved = store.get("application", null);
+    if (saved) {
+      var again = h("button", { class: "btn btn-ghost btn-sm", type: "button" }, "다시 작성하기");
+      again.addEventListener("click", function () { store.set("application", null); renderApply(); });
+      applyBox.appendChild(h("div", { class: "done", role: "status" }, [
+        h("div", { class: "done-icon", "aria-hidden": "true" }, "✓"),
+        h("h4", {}, apply.successTitle),
+        h("p", {}, apply.successText),
+        REMOTE ? h("p", { class: "done-meta" }, "관리자가 승인하면 주차별 학습 내용을 볼 수 있습니다. 승인 뒤 화면 오른쪽 위 '로그인'에서 같은 학번·이름으로 로그인해 주세요.") : null,
+        h("p", { class: "done-meta" }, saved.name + " (" + saved.studentId + ") · " + fmtStamp(saved.at)),
+        again,
+      ]));
+      return;
+    }
+    applyBox.appendChild(makeForm(apply.fields, apply.submitLabel, function (values, api) {
+      values.at = Date.now();
+      function done() {
+        store.set("application", values);
+        store.set("applications", store.get("applications", []).concat([values])); // 관리자 화면의 신청 내역
+        renderApply();
+        applyBox.scrollIntoView({ block: "center" });
+      }
+      if (REMOTE) {
+        return call("POST", "applications", { data: values }).then(done)
+          .catch(function (err) { api.error(err.message); });
+      }
+      if (!apply.endpoint) return done();
+      fetch(apply.endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) })
+        .then(function (res) { if (!res.ok) throw new Error(res.status); done(); })
+        .catch(function () { api.error("전송하지 못했습니다. 잠시 뒤 다시 시도해 주세요."); });
+    }));
+  }
+
+  var joinEl = section(join, [
+    h("h3", { class: "sub-title reveal" }, join.pollsTitle),
+    pollBox,
+    pollAdminBox,
+    h("h3", { class: "sub-title gap-top reveal", id: "apply" }, apply.title),
+    REMOTE ? null : notice(apply.notice), // 서버에 저장될 때는 '이 기기에만 저장' 안내를 숨깁니다.
+    applyBox,
+  ]);
+
+  /* ── 수강생: 로그인 · 출석 · 과제 제출 ──
+   * 따로 섹션을 두지 않고 '주차별 학습'에서 합니다. 과제 제출은 팝업 창에서 구글 드라이브 공유 주소를 냅니다. */
+  var room = C.classroom;
+  var todayWeek = classMap[dateKey(todayStart)];
+  var studentModal = null; // 열려 있는 수강생 창 { week, body, close }
+
+  // 서버에 저장된 내 출석·제출 기록을 화면에 반영
+  function applyMine(res) {
+    var me = store.get("session", null);
+    if (!me) return;
+    var att = store.get("attendance", {}), subs = store.get("submissions", {});
+    att[me.id] = res.attendance || {};
+    subs[me.id] = res.submissions || [];
+    store.set("attendance", att);
+    store.set("submissions", subs);
+    if (res.profile) { me.profile = res.profile; store.set("session", me); }
+    // 방금 승인되었으면(또는 승인이 취소되었으면) 권한에 맞는 내용을 다시 받아 옵니다.
+    if ("approved" in res && !!res.approved !== !!me.approved) {
+      me.approved = !!res.approved;
+      store.set("session", me);
+      return location.reload();
+    }
+    renderStudent();
+  }
+  function syncMine() {
+    var me = store.get("session", null);
+    if (!REMOTE) return;
+    if (me && !me.token) { store.set("session", null); return renderStudent(); } // 서버 연결 전에 한 로그인은 다시
+    if (!me) return renderStudent();
+    call("GET", "me", undefined, me.token).then(applyMine).catch(function (err) {
+      if (err.status === 401) { store.set("session", null); renderStudent(); }
+    });
+  }
+  function logoutStudent() {
+    store.set("session", null);
+    if (REMOTE) { location.hash = "#weeks-title"; return location.reload(); } // 잠긴 내용으로 되돌리기
+    if (studentModal) studentModal.close();
+    renderStudent(); updatePoll();
+  }
+  function renderStudent() {
+    renderStudentBar();
+    renderAttendance();
+    if (studentModal) drawStudentModal();
+  }
+
+  // 주차 목록 위: 로그인 상태 한 줄
+  function renderStudentBar() {
+    studentBar.textContent = "";
+    var me = store.get("session", null);
+    headerLogin.textContent = me ? "👤 " + me.name : "로그인";
+    headerLogin.classList.toggle("on", !!me);
+    headerLogin.title = me ? "내 정보·제출 내역·로그아웃" : "수강생 로그인";
+    if (!me) {
+      var login = h("button", { class: "btn btn-ghost btn-sm", type: "button" }, "수강생 로그인");
+      login.addEventListener("click", function () { openStudent(null); });
+      studentBar.appendChild(h("span", {}, "🔐 수강생은 로그인하면 출석을 체크하고 과제를 제출할 수 있습니다."));
+      studentBar.appendChild(login);
+      return;
+    }
+    var waiting = REMOTE && !me.approved;
+    var mine = h("button", { class: "btn btn-ghost btn-sm", type: "button" }, "내 제출 내역");
+    mine.addEventListener("click", function () { openStudent(null); });
+    var out = h("button", { class: "btn btn-ghost btn-sm", type: "button" }, "로그아웃");
+    out.addEventListener("click", logoutStudent);
+    var myAtt = (store.get("attendance", {})[me.id]) || {};
+    var attended = weeks.filter(function (w) { return myAtt[w.week]; }).length;
+    studentBar.appendChild(h("span", {}, [
+      "👤 ", h("b", {}, me.name + "님"), h("span", { class: "sub-meta" }, " · 학번 " + me.id),
+      REMOTE ? h("span", { class: "tag " + (waiting ? "" : "tag-assign") }, waiting ? "승인 대기" : "승인됨") : null,
+      waiting ? null : h("span", { class: "sub-meta" }, " · 출석 " + attended + "/" + weeks.length + "회"),
+    ]));
+    studentBar.appendChild(h("span", { class: "student-bar-btns" }, waiting ? [out] : [mine, out]));
+  }
+
+  // 각 주차 안: 출석 체크 버튼 (수업 당일, 미리 보기 모드에서는 아무 주차나)
+  function renderAttendance() {
+    var me = store.get("session", null);
+    var allAtt = store.get("attendance", {});
+    var myAtt = (me && allAtt[me.id]) || {};
+    [].forEach.call(document.querySelectorAll(".att-slot"), function (slot) {
+      slot.textContent = "";
+      var w = weeks.filter(function (x) { return String(x.week) === slot.getAttribute("data-week"); })[0];
+      if (!w || !me || (REMOTE && !me.approved)) return;
+      if (myAtt[w.week]) {
+        slot.appendChild(h("span", { class: "tag tag-assign" }, "✓ 출석 완료 · " + fmtStamp(myAtt[w.week])));
+        return;
+      }
+      if (w !== todayWeek && !room.testMode) return;
+      var b = h("button", { class: "btn btn-ghost btn-sm", type: "button" }, "✅ " + w.week + "주차 출석 체크");
+      b.addEventListener("click", function () {
+        myAtt[w.week] = Date.now();
+        allAtt[me.id] = myAtt;
+        store.set("attendance", allAtt);
+        renderStudent();
+        if (REMOTE) {
+          call("POST", "attendance", { week: w.week }, me.token).then(applyMine)
+            .catch(function (err) { showToast(err.message); if (err.status === 401) store.set("session", null); syncMine(); });
+        }
+      });
+      slot.appendChild(b);
+    });
+  }
+
+  // 수강생 창 열기. week가 있으면 그 주차 과제 제출, 없으면 로그인·내 제출 내역.
+  function openStudent(week) {
+    if (studentModal) studentModal.close();
+    var lastFocus = document.activeElement;
+    var closeBtn = h("button", { class: "modal-close", type: "button", "aria-label": "닫기" }, "×");
+    var body = h("div", { class: "student-modal" });
+    var modal = h("div", { class: "modal modal-form modal-wide", role: "dialog", "aria-modal": "true", "aria-label": "과제 제출" }, [closeBtn, body]);
+    var backdrop = h("div", { class: "modal-backdrop" }, [modal]);
+    var self = { week: week == null ? null : Number(week), body: body, timer: 0 };
+    self.close = function () {
+      if (studentModal !== self) return;
+      studentModal = null;
+      clearInterval(self.timer);
+      backdrop.classList.remove("show");
+      document.removeEventListener("keydown", onKey);
+      setTimeout(function () { backdrop.remove(); }, 250);
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    };
+    function onKey(e) { if (e.key === "Escape") self.close(); }
+    closeBtn.addEventListener("click", self.close);
+    backdrop.addEventListener("click", function (e) { if (e.target === backdrop) self.close(); });
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(backdrop);
+    studentModal = self;
+    drawStudentModal();
+    requestAnimationFrame(function () { backdrop.classList.add("show"); });
+  }
+
+  function subItem(s) {
+    return h("li", {}, [
+      h("div", {}, [
+        h("b", {}, s.week + "주차 · " + s.title),
+        h("span", { class: "tag" + (s.late ? "" : " tag-assign") }, s.late ? "지각 제출" : "제출 완료"),
+      ]),
+      h("div", { class: "sub-meta" }, [
+        fmtStamp(s.at) + " · ",
+        s.url ? h("a", { href: s.url, target: "_blank", rel: "noopener" }, "📎 구글 드라이브에서 열기 ↗") : "📎 " + (s.file || ""),
+      ]),
+      s.memo ? h("div", { class: "sub-meta" }, "메모: " + s.memo) : null,
+    ]);
+  }
+  function infoRow(label, value) { return h("div", { class: "info-row" }, [h("dt", {}, label), h("dd", {}, value)]); }
+
+  function drawStudentModal() {
+    var self = studentModal, box = self.body;
+    clearInterval(self.timer);
+    box.textContent = "";
+    var me = store.get("session", null);
+    var w = self.week == null ? null : weeks.filter(function (x) { return Number(x.week) === self.week; })[0];
+    var head = function (icon, title, text) {
+      box.appendChild(h("div", { class: "modal-emoji", "aria-hidden": "true" }, icon));
+      box.appendChild(h("h2", {}, title));
+      if (text) box.appendChild(h("p", { class: "student-modal-lead" }, text));
+    };
+
+    /* 1) 로그인 전 */
+    if (!me) {
+      head("🔐", "수강생 로그인", w ? w.week + "주차 과제를 제출하려면 먼저 로그인해 주세요." : "로그인하면 출석을 체크하고 과제를 제출할 수 있습니다.");
+      box.appendChild(makeForm([
+        { name: "id", label: "학번", type: "text", required: true, placeholder: "숫자 10자리", pattern: "^\\d{10}$", patternMsg: "학번은 숫자 10자리로 입력해 주세요." },
+        { name: "name", label: "이름", type: "text", required: true, placeholder: "홍길동", hint: "수강 신청서에 적은 학번과 이름을 입력하세요." },
+      ], "로그인", function (values, api) {
+        if (REMOTE) { // 서버가 명단(수강 신청자)에 있는 학번·이름인지 확인합니다.
+          return call("POST", "student/login", { id: values.id, name: values.name })
+            .then(function (res) {
+              store.set("session", { id: res.id, name: res.name, token: res.token, approved: !!res.approved });
+              if (w) store.set("openAssign", w.week); // 새로 고친 뒤 제출 창을 이어서 엽니다.
+              location.hash = w ? "#week-" + w.week : "#weeks-title";
+              location.reload();
+            })
+            .catch(function (err) { api.fail("id", err.message); });
+        }
+        // 관리자가 명단을 등록했다면 명단에 있는 학번·이름만 들어올 수 있습니다.
+        if (room.rosterHashes.length && room.rosterHashes.indexOf(rosterHash(values.id, values.name)) < 0) {
+          return api.fail("id", "수강생 명단에 없는 학번·이름입니다.");
+        }
+        // 로그인 전에 한 투표는 내 학번으로 옮겨 한 사람이 두 번 투표하지 않게 합니다.
+        var allVotes = store.get("pollVotes", {});
+        var guest = voterId();
+        Object.keys(allVotes).forEach(function (pid) {
+          var votes = allVotes[pid];
+          if (!(guest in votes)) return;
+          if (!(("s:" + values.id) in votes)) votes["s:" + values.id] = votes[guest];
+          delete votes[guest];
+        });
+        store.set("pollVotes", allVotes);
+        store.set("session", { id: values.id, name: values.name });
+        renderStudent(); updatePoll();
+      }));
+      return;
+    }
+
+    var prof = me.profile || {};
+    var person = h("dl", { class: "info-list" }, [
+      infoRow("이름", me.name), infoRow("학번", me.id),
+      prof.department ? infoRow("학과", prof.department) : null,
+      prof.grade ? infoRow("학년", prof.grade) : null,
+      prof.email ? infoRow("이메일", prof.email) : null,
+    ]);
+    var out = h("button", { class: "modal-link", type: "button" }, "로그아웃");
+    out.addEventListener("click", logoutStudent);
+
+    /* 2) 승인 대기 */
+    if (REMOTE && !me.approved) {
+      head("⏳", "관리자 승인을 기다리는 중입니다", "승인되면 주차별 학습 내용을 볼 수 있고, 출석 체크와 과제 제출도 할 수 있습니다.");
+      box.appendChild(h("h4", {}, "수강생 정보"));
+      box.appendChild(person);
+      box.appendChild(h("div", { class: "modal-foot" }, [out]));
+      return;
+    }
+
+    var mySub = (store.get("submissions", {})[me.id]) || [];
+
+    /* 3) 내 제출 내역 (주차를 정하지 않고 열었을 때) */
+    if (!w || !w.assignment) {
+      head("🗂️", "내 제출 내역", "과제는 주차별 학습의 각 과제에 있는 '과제 제출하기'에서 냅니다.");
+      box.appendChild(h("h4", {}, "수강생 정보"));
+      box.appendChild(person);
+      box.appendChild(h("h4", {}, "제출 내역"));
+      box.appendChild(mySub.length ? h("ul", { class: "sub-list" }, mySub.map(subItem)) : h("p", { class: "cal-empty" }, "아직 제출한 과제가 없습니다."));
+      box.appendChild(h("div", { class: "modal-foot" }, [out]));
+      return;
+    }
+
+    /* 4-1) 제출 완료 화면 */
+    if (self.done) {
+      var d = self.done;
+      head("🎉", "수고했습니다!", "과제가 정상 제출되었습니다.");
+      box.appendChild(h("dl", { class: "info-list" }, [
+        infoRow("제출자", me.name + " (" + me.id + ")"),
+        infoRow("제출 주차", d.week + "주차 · " + d.title),
+        infoRow("제출 일시", [fmtStamp(d.at), d.late ? h("span", { class: "tag" }, "지각 제출") : null]),
+        infoRow("제출 주소", h("a", { href: d.url, target: "_blank", rel: "noopener" }, "📎 구글 드라이브에서 열기 ↗")),
+      ]));
+      var okBtn = h("button", { class: "btn btn-primary", type: "button" }, "확인");
+      okBtn.addEventListener("click", self.close);
+      var again = h("button", { class: "modal-link", type: "button" }, "다시 제출하기");
+      again.addEventListener("click", function () { self.done = null; drawStudentModal(); });
+      box.appendChild(okBtn);
+      box.appendChild(h("div", { class: "modal-foot" }, [again]));
+      okBtn.focus();
+      return;
+    }
+
+    /* 4) 과제 제출 */
+    head("📤", "과제 제출", "");
+    var nowText = h("b", {}, fmtStamp(Date.now()));
+    var lateTag = h("span", { class: "tag" }, "지각 제출");
+    function tick() { nowText.textContent = fmtStamp(Date.now()); lateTag.hidden = Date.now() <= w._due.getTime(); }
+    tick();
+    self.timer = setInterval(tick, 1000);
+    box.appendChild(h("h4", {}, "수강생 정보"));
+    box.appendChild(person);
+    box.appendChild(h("h4", {}, "제출 정보"));
+    box.appendChild(h("dl", { class: "info-list" }, [
+      infoRow("제출 주차", w.week + "주차 · " + w.assignment.title),
+      infoRow("마감", fmtDateTime(w._due)),
+      infoRow("제출 일시", [nowText, " ", lateTag, h("small", { class: "sub-meta" }, " (제출 버튼을 누른 시각으로 기록됩니다)")]),
+    ]));
+    box.appendChild(makeForm([
+      {
+        name: "driveUrl", label: "구글 드라이브 공유 주소", type: "text", required: true, wide: true, placeholder: "https://drive.google.com/…",
+        hint: "구글 드라이브에서 파일 → 공유 → '링크가 있는 모든 사용자'로 바꾼 뒤 링크를 복사해 붙여 넣으세요.",
+      },
+      { name: "memo", label: "메모", type: "textarea", required: false, wide: true, placeholder: "교수자에게 남길 말(선택)" },
+    ], "과제 제출하기", function (values, api) {
+      var url = String(values.driveUrl || "").trim();
+      if (!driveId(url)) return api.fail("driveUrl", "구글 드라이브 공유 주소가 아닙니다. (drive.google.com 또는 docs.google.com)");
+      var at = Date.now();
+      var rec = { week: w.week, title: w.assignment.title, url: url, file: "", size: 0, memo: values.memo, at: at, late: at > w._due.getTime() };
+      // 제출 완료: 창을 완료 화면으로 바꾸고 폭죽을 터뜨립니다.
+      function done() { self.done = rec; renderStudent(); fireworks(); }
+      if (!REMOTE) {
+        var all = store.get("submissions", {});
+        (all[me.id] = all[me.id] || []).unshift(rec);
+        store.set("submissions", all);
+        return done();
+      }
+      return call("POST", "submissions", { week: w.week, driveUrl: url, memo: values.memo }, me.token)
+        .then(function (res) {
+          var saved = (res.submissions || []).filter(function (x) { return Number(x.week) === Number(w.week); })[0];
+          if (saved) rec = saved; // 서버가 기록한 제출 시각·지각 여부
+          self.done = rec;
+          applyMine(res);
+          fireworks();
+        })
+        .catch(function (err) {
+          if (err.status === 401) { store.set("session", null); return syncMine(); }
+          api.error(err.message);
+        });
+    }));
+    var forWeek = mySub.filter(function (s) { return Number(s.week) === Number(w.week); });
+    if (forWeek.length) {
+      box.appendChild(h("h4", { class: "sub-list-title" }, "이 과제의 제출 내역 (" + forWeek.length + "회)"));
+      box.appendChild(h("ul", { class: "sub-list" }, forWeek.map(subItem)));
+    }
+    box.appendChild(h("div", { class: "modal-foot" }, [out]));
+  }
+
+  // 예전 '내 강의실'(#classroom)로 가던 링크는 수강생 창을 엽니다.
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest ? e.target.closest('a[href="#classroom"]') : null;
+    if (!a) return;
+    e.preventDefault();
+    openStudent(a.getAttribute("data-assign"));
+  });
+
+  /* ── 공지사항 ── 자주 묻는 질문 아래. 카드를 누르면 내용이 펼쳐집니다. */
+  var noticeCfg = C.notices;
+  noticeCfg.id = noticeCfg.id || "notices";
+  noticeCfg.eyebrow = noticeCfg.eyebrow || "Notice";
+  noticeCfg.items = noticeCfg.items || [];
+  var noticeBox = h("div", { class: "faq-list notice-list" });
+  var noticeDrawn = false;
+  // 관리자가 공지를 추가·수정·삭제하면 다시 불립니다.
+  function renderNotices() {
+    noticeBox.textContent = "";
+    // 중요 공지가 먼저, 그다음 최근 날짜순. idx는 설정 안에서의 원래 순서(수정·삭제에 씀)
+    var list = noticeCfg.items.map(function (n, idx) { return { n: n, idx: idx }; }).sort(function (x, y) {
+      return ((y.n.pinned ? 1 : 0) - (x.n.pinned ? 1 : 0)) || String(y.n.date || "").localeCompare(String(x.n.date || "")) || y.idx - x.idx;
+    });
+    list.forEach(function (it) {
+      var n = it.n;
+      var summary = h("summary", {}, [
+        h("span", { class: "notice-sum" }, [
+          n.pinned ? h("span", { class: "tag" }, "중요") : null,
+          h("span", { class: "notice-title" }, n.title),
+        ]),
+        n.date ? h("span", { class: "notice-date" }, n.date) : null,
+      ]);
+      // 관리자 로그인 중이면 카드에 수정·삭제 버튼이 붙습니다(admin.js).
+      if (window.KU && window.KU.onNoticeCard) window.KU.onNoticeCard(summary, it.idx);
+      noticeBox.appendChild(h("details", { class: "card faq-item notice-item reveal" + (noticeDrawn ? " in" : "") }, [
+        summary,
+        h("div", { class: "faq-answer notice-text" }, n.text || "내용이 없습니다."),
+      ]));
+    });
+    // 관리자 로그인 중이면 맨 끝에 '공지 추가' 칸이 붙습니다(admin.js).
+    var extra = window.KU && window.KU.onNoticeList && window.KU.onNoticeList(noticeBox);
+    if (!list.length && !extra) noticeBox.appendChild(h("p", { class: "cal-empty folio-empty" }, "등록된 공지가 없습니다."));
+    noticeDrawn = true;
+  }
+  renderNotices();
+  var noticeEl = section(noticeCfg, [noticeBox]);
+
+  var main = document.getElementById("main");
+  [heroEl, statsEl, aboutEl, curEl, folioEl, guideEl, joinEl, faqEl, noticeEl].forEach(function (el) { if (el) main.appendChild(el); });
+  updatePoll();
+  renderApply();
+  renderStudent();
+  syncMine();
+  // 로그인하느라 새로 고쳤다면 내려던 과제의 제출 창을 이어서 엽니다.
+  (function () {
+    var wk = store.get("openAssign", null);
+    if (wk == null) return;
+    store.set("openAssign", null);
+    var me = store.get("session", null);
+    if (me && (!REMOTE || me.approved)) setTimeout(function () { openStudent(wk); }, 600);
+  })();
+
+  /* ── 푸터: 교수자 사진·소개·연락처 ── */
+  var ins = C.instructor;
+  var footer = document.getElementById("footer");
+  footer.appendChild(h("div", { class: "container", id: ins.id }, [
+    sectionHead(ins),
+    h("div", { class: "card instructor reveal" }, [
+      h("div", { class: "avatar" }, ins.photo
+        ? h("img", { src: ins.photo, alt: ins.name + " 사진" })
+        : ins.name.charAt(0)),
+      h("div", {}, [
+        h("div", { class: "instructor-head" }, [
+          h("h3", { class: "instructor-name" }, [ins.name, ins.nameSub ? h("span", { class: "instructor-name-sub" }, ins.nameSub) : null]),
+          h("p", { class: "instructor-role" }, ins.role),
+          ins.roleSub ? h("p", { class: "instructor-role-sub" }, ins.roleSub) : null,
+        ]),
+        ins.bio.length ? h("div", { class: "instructor-bio" }, ins.bio.map(function (p) { return h("p", {}, p); })) : null,
+        ins.career.length ? h("ul", { class: "career" }, ins.career.map(function (c) { return h("li", {}, c); })) : null,
+        ins.works && ins.works.length ? h("div", { class: "works" }, [
+          h("h4", {}, "📚 " + ins.worksTitle),
+          h("ul", { class: "works-list" }, ins.works.map(function (wk) {
+            return h("li", {}, [
+              h("a", { href: wk.href, target: "_blank", rel: "noopener" }, [wk.title, h("span", { "aria-hidden": "true" }, " ↗")]),
+            ]);
+          })),
+        ]) : null,
+        h("div", { class: "contacts" }, ins.contacts.map(function (c) {
+          var external = /^https?:/.test(c.href || "");
+          return h(c.href ? "a" : "span", { class: "contact", href: c.href, target: external ? "_blank" : "", rel: external ? "noopener" : "" }, [
+            h("span", { "aria-hidden": "true" }, c.icon), h("b", {}, c.label), c.value,
+          ]);
+        })),
+      ]),
+    ]),
+    h("div", { class: "footer-bottom" }, [
+      h("div", {}, C.footer.copyright),
+      h("div", { class: "footer-links" }, (C.footer.links || []).map(function (l) {
+        return h("span", {}, [
+          l.icon + " " + l.label + ": ",
+          h("a", { href: l.href, target: "_blank", rel: "noopener" }, l.text),
+        ]);
+      })),
+    ]),
+  ]));
+
+  /* ── 동작: 달력·마감 카운트다운 ── */
+  renderCalendar();
+  renderDetail();
+  setInterval(updateCountdowns, 30000);
+
+  /* ── 동작: 슬라이드 ── */
+  var slides = [].slice.call(track.children);
+  function slideStep() {
+    return slides.length > 1 ? slides[1].offsetLeft - slides[0].offsetLeft : track.clientWidth;
+  }
+  function slideMax() {
+    return Math.max(0, Math.round((track.scrollWidth - track.clientWidth) / slideStep()));
+  }
+  function slideIndex() {
+    return Math.min(slideMax(), Math.round(track.scrollLeft / slideStep()));
+  }
+  function slideTo(idx) {
+    idx = Math.max(0, Math.min(slideMax(), idx));
+    track.scrollTo({ left: idx * slideStep(), behavior: reduceMotion ? "auto" : "smooth" });
+  }
+  function buildDots() {
+    var count = slideMax() + 1;
+    if (dots.children.length !== count) {
+      dots.textContent = "";
+      for (var d = 0; d < count; d++) {
+        (function (n) {
+          var dot = h("button", { class: "slider-dot", type: "button", "aria-label": (n + 1) + "번째로 이동" });
+          dot.addEventListener("click", function () { slideTo(n); });
+          dots.appendChild(dot);
+        })(d);
+      }
+    }
+    updateSlider();
+  }
+  function updateSlider() {
+    var idx = slideIndex();
+    [].forEach.call(dots.children, function (dot, n) { dot.classList.toggle("active", n === idx); });
+    prevBtn.disabled = idx <= 0;
+    nextBtn.disabled = idx >= slideMax();
+  }
+  prevBtn.addEventListener("click", function () { slideTo(slideIndex() - 1); });
+  nextBtn.addEventListener("click", function () { slideTo(slideIndex() + 1); });
+  track.addEventListener("scroll", updateSlider, { passive: true });
+  track.addEventListener("keydown", function (e) {
+    if (e.key === "ArrowRight") { e.preventDefault(); slideTo(slideIndex() + 1); }
+    if (e.key === "ArrowLeft") { e.preventDefault(); slideTo(slideIndex() - 1); }
+  });
+  window.addEventListener("resize", buildDots);
+  buildDots();
+
+  /* ── 동작: 모바일 메뉴 ── */
+  var toggle = document.getElementById("navToggle");
+  function setMenu(open) {
+    nav.classList.toggle("open", open);
+    toggle.setAttribute("aria-expanded", String(open));
+    toggle.setAttribute("aria-label", open ? "메뉴 닫기" : "메뉴 열기");
+  }
+  toggle.addEventListener("click", function () { setMenu(!nav.classList.contains("open")); });
+  nav.addEventListener("click", function (e) { if (e.target.tagName === "A") setMenu(false); });
+  document.addEventListener("click", function (e) {
+    if (!nav.contains(e.target) && !toggle.contains(e.target)) setMenu(false);
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") setMenu(false); });
+
+  /* ── 동작: 스크롤(헤더 그림자, 맨 위로 버튼, 현재 메뉴 표시) ── */
+  var header = document.querySelector(".site-header");
+  var toTop = document.getElementById("toTop");
+  var links = [].slice.call(nav.querySelectorAll("a"));
+  var sections = links.map(function (a) { return document.getElementById(a.getAttribute("data-target")); });
+
+  function onScroll() {
+    var y = window.scrollY;
+    header.classList.toggle("scrolled", y > 8);
+    toTop.classList.toggle("show", y > 400);
+
+    var line = header.offsetHeight + 80;
+    var current = -1;
+    sections.forEach(function (s, idx) { if (s && s.getBoundingClientRect().top <= line) current = idx; });
+    // 페이지 끝에 닿으면 마지막 메뉴를 활성화
+    if (window.innerHeight + y >= document.documentElement.scrollHeight - 4) current = sections.length - 1;
+    links.forEach(function (a, idx) { a.classList.toggle("active", idx === current); });
+  }
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onScroll);
+  onScroll();
+
+  toTop.addEventListener("click", function () { window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" }); });
+
+  /* ── 동작: 첫 방문 폭죽 ── */
+  function fireworks() {
+    var canvas = h("canvas", { class: "fireworks", "aria-hidden": "true" });
+    document.body.appendChild(canvas);
+    var ctx = canvas.getContext("2d");
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    var W = window.innerWidth, H = window.innerHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.scale(dpr, dpr);
+    var colors = ["#12876c", "#4fb89c", "#f39a12", "#f7b955", "#2f8fe0", "#e5533d", "#151515"];
+    var parts = [];
+    var bursts = 7, launched = 0;
+
+    function burst() {
+      var x = W * (0.15 + Math.random() * 0.7), y = H * (0.15 + Math.random() * 0.35);
+      for (var n = 0; n < 70; n++) {
+        var ang = Math.random() * Math.PI * 2, sp = 1.5 + Math.random() * 5.5;
+        var life = 55 + Math.random() * 45;
+        parts.push({ x: x, y: y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, life: life, max: life,
+          r: 1.5 + Math.random() * 2, c: colors[Math.floor(Math.random() * colors.length)] });
+      }
+      launched++;
+      if (launched < bursts) setTimeout(burst, 320);
+    }
+    function frame() {
+      ctx.clearRect(0, 0, W, H);
+      parts = parts.filter(function (p) { return p.life > 0; });
+      parts.forEach(function (p) {
+        p.vx *= 0.985; p.vy = p.vy * 0.985 + 0.07;
+        p.x += p.vx; p.y += p.vy; p.life--;
+        ctx.globalAlpha = Math.max(0, p.life / p.max);
+        ctx.fillStyle = p.c;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+      });
+      if (parts.length || launched < bursts) requestAnimationFrame(frame);
+      else canvas.remove();
+    }
+    burst();
+    requestAnimationFrame(frame);
+  }
+
+  // 주소 끝에 ?welcome 을 붙이면 첫 방문 효과와 팝업을 다시 볼 수 있습니다(확인용).
+  var forceWelcome = /[?&]welcome\b/.test(location.search);
+  var welcome = C.welcome;
+  if (!store.get("visited", false) || forceWelcome) {
+    store.set("visited", true);
+    if (welcome.fireworks && !reduceMotion) fireworks();
+    if (welcome.message) {
+      var toast = h("div", { class: "toast", role: "status" }, welcome.message);
+      document.body.appendChild(toast);
+      setTimeout(function () { toast.classList.add("show"); }, 100);
+      setTimeout(function () { toast.classList.remove("show"); }, 4200);
+      setTimeout(function () { toast.remove(); }, 4800);
+    }
+  }
+
+  /* ── 동작: 안내 팝업 ── 여러 개를 둘 수 있고, '사용' 중인 팝업이 차례로 뜹니다. */
+  var popupSet = C.popup = C.popup || {};
+  // 예전 설정(팝업 하나)은 새 형식(popups 목록)으로 바꿔 읽습니다.
+  if (!C.popups) {
+    C.popups = popupSet.title ? [{
+      id: "pop1", enabled: popupSet.enabled !== false, badge: popupSet.badge, title: popupSet.title,
+      text: popupSet.text, buttonLabel: popupSet.buttonLabel, buttonHref: popupSet.buttonHref,
+    }] : [];
+  }
+  if (popupSet.delaySeconds === undefined) popupSet.delaySeconds = 2;
+  popupSet.hideTodayLabel = popupSet.hideTodayLabel || "오늘 하루 보지 않기";
+
+  // preview면 미리 보기(숨김 기록을 남기지 않음), onClosed는 닫힌 뒤 할 일
+  function showPopup(p, preview, onClosed) {
+    var lastFocus = document.activeElement;
+    var go = p.buttonLabel ? h("a", { class: "btn btn-primary", href: p.buttonHref || "#" }, p.buttonLabel) : null;
+    var hideToday = h("button", { class: "modal-link", type: "button" }, popupSet.hideTodayLabel);
+    var closeBtn = h("button", { class: "modal-close", type: "button", "aria-label": "닫기" }, "×");
+    var later = h("button", { class: "modal-link", type: "button" }, "닫기");
+    var modal = h("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-labelledby": "popup-title" }, [
+      closeBtn,
+      logoMark("modal-emoji"),
+      p.badge ? h("span", { class: "eyebrow" }, p.badge) : null,
+      h("h2", { id: "popup-title" }, p.title),
+      p.text ? h("p", { class: "popup-text" }, p.text) : null,
+      go,
+      h("div", { class: "modal-foot" }, [hideToday, later]),
+    ]);
+    var backdrop = h("div", { class: "modal-backdrop" }, [modal]);
+    var closed = false;
+    function close() {
+      if (closed) return;
+      closed = true;
+      backdrop.classList.remove("show");
+      document.removeEventListener("keydown", onKey);
+      setTimeout(function () { backdrop.remove(); if (onClosed) onClosed(); }, 250);
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }
+    function onKey(e) {
+      if (e.key === "Escape") close();
+      if (e.key !== "Tab") return;
+      // 팝업 안에서만 초점이 돌도록
+      var items = backdrop.querySelectorAll("a, button");
+      var first = items[0], last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+    closeBtn.addEventListener("click", close);
+    later.addEventListener("click", close);
+    if (go) go.addEventListener("click", close);
+    backdrop.addEventListener("click", function (e) { if (e.target === backdrop) close(); });
+    hideToday.addEventListener("click", function () {
+      if (!preview) {
+        var n = new Date();
+        var hidden = store.get("popupHide", {});
+        hidden[p.id] = new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1).getTime(); // 오늘 자정까지
+        store.set("popupHide", hidden);
+      }
+      close();
+    });
+    // 관리자 로그인 중이면 팝업 안에 수정·삭제 버튼이 붙습니다(admin.js).
+    if (window.KU && window.KU.onPopup) window.KU.onPopup(modal, p, close);
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(backdrop);
+    requestAnimationFrame(function () { backdrop.classList.add("show"); (go || later).focus(); });
+  }
+  // 접속 뒤 잠시 있다가, 사용 중이고 오늘 숨기지 않은 팝업을 하나씩 차례로 띄웁니다.
+  setTimeout(function () {
+    var hidden = store.get("popupHide", {});
+    var allHidden = Date.now() < store.get("popupHideUntil", 0); // 예전 방식의 숨김 기록
+    var queue = C.popups.filter(function (p) {
+      return p.enabled !== false && (forceWelcome || (!allHidden && !(Date.now() < (hidden[p.id] || 0))));
+    });
+    (function next() {
+      var p = queue.shift();
+      if (p) showPopup(p, false, function () { setTimeout(next, 200); });
+    })();
+  }, popupSet.delaySeconds * 1000);
+
+  /* ── 관리자 모드(admin.js)와 함께 쓰는 것들 ── */
+  window.KU = {
+    h: h, store: store, makeForm: makeForm, config: C, baseStamp: baseStamp, usingOverride: usingOverride,
+    remote: REMOTE, full: FULL, call: call, toast: showToast,
+    setPollCounts: function (polls) { if (REMOTE) { remoteCounts = polls || {}; updatePoll(); } },
+    hashSecret: hashSecret, rosterHash: rosterHash, sha256: sha256, weeks: weeks,
+    fmtDateTime: fmtDateTime, fmtShort: fmtShort, driveId: driveId, youtubeId: youtubeId,
+    // 공지를 바꾼 뒤 새로고침 없이 다시 그립니다.
+    notices: {
+      refresh: function (items) {
+        if (items) noticeCfg.items = items;
+        renderNotices();
+      },
+    },
+    // 팝업 미리 보기
+    popups: { show: function (p) { showPopup(p, true); } },
+    // 설문을 바꾼 뒤 새로고침 없이 다시 그립니다. stats·card는 관리자 히스토리에서 씁니다.
+    polls: {
+      refresh: function (polls) {
+        if (polls) join.polls = polls;
+        updatePoll();
+      },
+      stats: pollStats,
+      card: pollCard,
+    },
+    // 수강 안내를 바꾼 뒤 새로고침 없이 카드를 다시 그립니다.
+    guide: {
+      refresh: function (data) {
+        if (data) ["tools", "prep", "grading", "gradingNote", "references", "referencesLead", "referencesNote"].forEach(function (k) { guide[k] = data[k]; });
+        renderGuide();
+      },
+    },
+    // 포트폴리오를 바꾼 뒤 새로고침 없이 카드를 다시 그립니다.
+    portfolio: {
+      refresh: function (items) {
+        if (items) folio.items = items;
+        renderFolio();
+      },
+    },
+    // 달력 일정을 바꾼 뒤 새로고침 없이 달력을 다시 그립니다.
+    calendar: {
+      refresh: function (events) {
+        if (events) { cur.events = events; buildEventMap(); }
+        renderCalendar();
+        renderDetail();
+      },
+    },
+  };
+
+  /* ── 동작: 등장 효과 + 숫자 올라가기 ── */
+  function countUp(el) {
+    var target = Number(el.getAttribute("data-value"));
+    if (reduceMotion || !isFinite(target)) return;
+    var start = null;
+    function tick(t) {
+      if (start === null) start = t;
+      var p = Math.min(1, (t - start) / 1200);
+      el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) requestAnimationFrame(tick);
+    }
+    el.textContent = "0";
+    requestAnimationFrame(tick);
+  }
+
+  var reveals = document.querySelectorAll(".reveal");
+  if ("IntersectionObserver" in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        en.target.classList.add("in");
+        var num = en.target.querySelector(".stat-num");
+        if (num) countUp(num);
+        io.unobserve(en.target);
+      });
+    }, { threshold: 0.08 });
+    reveals.forEach(function (el) { io.observe(el); });
+  } else {
+    reveals.forEach(function (el) { el.classList.add("in"); });
+  }
+  } // main 끝
+})();

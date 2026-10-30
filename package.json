@@ -1,0 +1,21 @@
+{
+  "name": "mosan-with-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "모산 with AI 교육 프로그램 사이트 (정적 파일 + PostgreSQL 저장 API)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js --mem"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "pg-mem": "^3.0.5"
+  }
+}
