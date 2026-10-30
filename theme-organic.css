@@ -293,3 +293,33 @@ a { color: var(--c-blue); }
 @media (prefers-reduced-motion: reduce) {
   .blob-shell, .blob-ring { animation: none; }
 }
+
+/* 보조모니터 안내 */
+.monitor-tips { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; align-items: center; margin-bottom: 26px; }
+.dual-screen { display: flex; gap: 10px; justify-content: center; }
+.ds-screen {
+  width: 96px; aspect-ratio: 16 / 10; display: grid; place-items: center; border-radius: 12px;
+  color: #fff; font-size: 13px; font-weight: 700; position: relative;
+}
+.ds-screen::after { content: ""; position: absolute; left: 35%; right: 35%; bottom: -10px; height: 6px; border-radius: 3px; background: #cfd5df; }
+.ds-a { background: var(--g-blue); box-shadow: 0 10px 20px rgba(47, 127, 217, 0.3); }
+.ds-b { background: var(--g-teal); box-shadow: 0 10px 20px rgba(26, 156, 134, 0.3); }
+.monitor-tip-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.monitor-tip-list li { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 16px; box-shadow: var(--nm-in); }
+.monitor-tip-list b { display: block; font-size: 14px; }
+.monitor-tip-list span { font-size: 13.5px; color: var(--navy-soft); line-height: 1.5; }
+.mt-ico { flex: none; font-size: 20px; }
+.monitor-card { display: grid; gap: 10px; align-content: start; }
+.monitor-img { aspect-ratio: 4 / 3; border-radius: 20px; background: #fff; display: grid; place-items: center; overflow: hidden; box-shadow: var(--nm-in); }
+.monitor-img img { width: 90%; height: 90%; object-fit: contain; }
+.monitor-head { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag.tag-badge { background: var(--purple-100); color: var(--purple-600); }
+.monitor-card h4 { margin: 0; font-size: 19px; }
+.monitor-specs { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; color: var(--navy-soft); }
+.monitor-specs li::before { content: "·"; margin-right: 6px; color: var(--c-pink); font-weight: 800; }
+.monitor-point { margin: 4px 0 6px; padding: 10px 12px; border-radius: 14px; background: var(--pink-100); color: #a8325e; font-size: 14px; font-weight: 600; line-height: 1.5; }
+.monitor-card .btn { justify-self: start; }
+@media (max-width: 760px) {
+  .monitor-tips { grid-template-columns: 1fr; }
+  .monitor-tip-list { grid-template-columns: 1fr; }
+}

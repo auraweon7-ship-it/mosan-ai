@@ -972,6 +972,36 @@
     }));
     hook("onGuideGrid", prepGrid, "prep");
 
+    // 보조모니터 안내: 두 화면 쓰는 법 + 추천 제품 카드
+    var monitors = guide.monitors || [];
+    var monitorBox = monitors.length ? h("div", { class: "monitor-box" }, [
+      h("h3", { class: "sub-title gap-top" + rv, id: "monitors" }, twoTone(guide.monitorsTitle)),
+      guide.monitorsLead ? h("p", { class: "goals-lead" + rv }, guide.monitorsLead) : null,
+      (guide.monitorTips || []).length ? h("div", { class: "card monitor-tips" + rv }, [
+        h("div", { class: "dual-screen", "aria-hidden": "true" }, [
+          h("span", { class: "ds-screen ds-a" }, "화상회의"),
+          h("span", { class: "ds-screen ds-b" }, "실습"),
+        ]),
+        h("ul", { class: "monitor-tip-list" }, guide.monitorTips.map(function (t) {
+          return h("li", {}, [h("span", { class: "mt-ico", "aria-hidden": "true" }, t.icon), h("div", {}, [h("b", {}, t.title), h("span", {}, t.text)])]);
+        })),
+      ]) : null,
+      h("div", { class: "grid grid-3 monitor-grid" }, monitors.map(function (m) {
+        return h("article", { class: "card lift monitor-card" + rv }, [
+          h("div", { class: "monitor-img" }, m.image ? h("img", { src: m.image, alt: m.brand + " " + m.name + " 제품 사진", loading: "lazy" }) : null),
+          h("div", { class: "monitor-head" }, [
+            h("span", { class: "tag" }, m.brand),
+            m.badge ? h("span", { class: "tag tag-badge" }, m.badge) : null,
+          ]),
+          h("h4", {}, m.name),
+          h("ul", { class: "monitor-specs" }, (m.specs || []).map(function (s) { return h("li", {}, s); })),
+          m.point ? h("p", { class: "monitor-point" }, m.point) : null,
+          m.url ? h("a", { class: "btn btn-ghost btn-sm", href: m.url, target: "_blank", rel: "noopener" }, "가격 비교 보기 ↗") : null,
+        ]);
+      })),
+      guide.monitorsNote ? h("p", { class: "card-note" + rv }, guide.monitorsNote) : null,
+    ]) : null;
+
     guideBox.textContent = "";
     [
       h("h3", { class: "sub-title" + rv }, guide.toolsTitle),
@@ -979,7 +1009,8 @@
       extraGrid,
       h("h3", { class: "sub-title gap-top" + rv }, guide.prepTitle),
       prepGrid,
-    ].forEach(function (el) { guideBox.appendChild(el); });
+      monitorBox,
+    ].forEach(function (el) { if (el) guideBox.appendChild(el); });
     guideDrawn = true;
   }
   renderGuide();

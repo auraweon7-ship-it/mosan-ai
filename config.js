@@ -337,7 +337,50 @@ window.SITE_CONFIG = {
       { icon: "📱", title: "스마트폰", text: "스마트폰 AI·음성 대화 실습(4주차)에 사용" },
       { icon: "📧", title: "Google 계정", text: "Gemini, NotebookLM, Google Sheets 실습에 사용" },
       { icon: "🎧", title: "이어폰·헤드셋", text: "화상회의 음성을 또렷하게 듣고 말하기 위해 권장" },
+      { icon: "🖥️", title: "보조모니터 (권장)", text: "화상회의와 실습 화면을 나눠 보면 훨씬 편합니다. 아래 추천 제품을 참고하세요." },
     ],
+
+    /* 보조모니터 안내 — 수강 준비물 아래에 표시됩니다. 통째로 지우면 보이지 않습니다.
+     *   image : 제품 사진 경로 (images/monitors 폴더)   specs : 주요 사양   point : 이런 분께 추천
+     *   url   : '가격 비교 보기' 버튼이 열 주소 */
+    monitorsTitle: "효율적인 수강을 위한 *보조모니터*",
+    monitorsLead: "한 화면에는 화상회의(강사 시연), 다른 화면에는 AI 도구를 띄워 두면 시연을 보면서 바로 따라 할 수 있습니다. 노트북에 케이블 하나로 연결하는 포터블 모니터를 추천합니다.",
+    monitorTips: [
+      { icon: "👀", title: "왼쪽 화면", text: "화상회의 — 강사 화면 공유와 시연 보기" },
+      { icon: "✍️", title: "오른쪽 화면", text: "실습 — ChatGPT·Canva 등 AI 도구 창" },
+      { icon: "🔌", title: "연결", text: "USB-C 케이블 하나로 영상·전원 연결 (노트북 USB-C가 영상 출력을 지원해야 합니다. 없으면 mini HDMI 사용)" },
+      { icon: "⚙️", title: "설정", text: "윈도우: Win + P → '확장' 선택 · 맥: 시스템 설정 → 디스플레이에서 배치" },
+    ],
+    monitors: [
+      {
+        brand: "LG전자",
+        name: "그램 +view 3세대 17MT70",
+        badge: "17형 · WQXGA",
+        image: "images/monitors/lg-17mt70.jpg",
+        specs: ["17형 2560×1600 (16:10)", "IPS 무광 · 350nit", "USB-C · mini HDMI", "약 780g", "화면 자동 회전 (LG Switch 앱)"],
+        point: "가장 큰 17형 화면 — 글씨가 크게 보여 화상회의와 문서 보기에 편합니다.",
+        url: "https://search.shopping.naver.com/search/all?query=LG%20%EA%B7%B8%EB%9E%A8%EB%B7%B0%2017MT70",
+      },
+      {
+        brand: "제우스랩",
+        name: "P16K",
+        badge: "16형 · 2.5K",
+        image: "images/monitors/zeuslap-p16k.jpg",
+        specs: ["16형 2560×1600 (16:10)", "IPS · 500nit · sRGB 100%", "최대 144Hz (USB-C) / 120Hz (HDMI)", "USB-C 2개 · mini HDMI", "30W PD 충전기 포함"],
+        point: "밝고 선명한 2.5K 화면을 부담 없는 가격에 — 처음 보조모니터를 쓰는 분께.",
+        url: "https://search.shopping.naver.com/search/all?query=%EC%A0%9C%EC%9A%B0%EC%8A%A4%EB%9E%A9%20P16K",
+      },
+      {
+        brand: "제우스랩",
+        name: "P16KT (터치)",
+        badge: "16형 · 2.5K · 터치",
+        image: "images/monitors/zeuslap-p16kt.jpg",
+        specs: ["16형 2560×1600 (16:10)", "IPS · 500nit · sRGB 100%", "터치스크린 (윈도우 노트북에서 동작)", "USB-C 2개 · mini HDMI", "30W PD 충전기 포함"],
+        point: "화면을 손가락으로 눌러 조작 — 마우스가 아직 익숙하지 않은 분께 편리합니다.",
+        url: "https://search.shopping.naver.com/search/all?query=%EC%A0%9C%EC%9A%B0%EC%8A%A4%EB%9E%A9%20P16KT",
+      },
+    ],
+    monitorsNote: "※ 특정 제품 구매를 강요하지 않습니다. 가지고 계신 모니터나 TV(HDMI)로도 충분합니다. 사양·가격은 판매처와 시기에 따라 다를 수 있으니 구매 전 확인해 주세요.",
   },
 
   /* ── 참여하기: 투표 + 수강 신청서 ──────────────────────── */
