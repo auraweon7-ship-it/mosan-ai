@@ -68,6 +68,7 @@
     if (KU.portfolio) KU.portfolio.refresh(); // 포트폴리오 카드의 추가·수정·삭제 버튼
     if (KU.guide) KU.guide.refresh(); // 수강 안내 카드의 추가·수정·삭제 버튼
     if (KU.polls) KU.polls.refresh(); // 설문 추가 칸과 히스토리 표
+    if (KU.qna) KU.qna.refresh(); // 질문 게시판의 답변·삭제 칸
     if (KU.notices) KU.notices.refresh(); // 공지 카드의 추가·수정·삭제 버튼
   }
 
@@ -1644,7 +1645,7 @@
         var p = line.replace(/^﻿/, "").split(/[,\t;]/).map(function (x) { return x.replace(/^["'\s]+|["'\s]+$/g, ""); });
         if (!p[0] && !p[1]) return;
         var dup = roster.some(function (r) { return r.id === p[0]; });
-        if (/^\d{10}$/.test(p[0]) && p[1] && !dup) { roster.push({ id: p[0], name: p[1] }); added++; } else skipped++;
+        if (/^\d{6,12}$/.test(p[0]) && p[1] && !dup) { roster.push({ id: p[0], name: p[1] }); added++; } else skipped++;
       });
       return { added: added, skipped: skipped };
     }
@@ -1653,7 +1654,7 @@
     var file = h("input", { type: "file", accept: ".csv,.txt", "aria-label": "명단 CSV 파일" });
     function report(r) {
       if (r.added) { sync(); return; }
-      result.textContent = "추가된 사람이 없습니다. (건너뜀 " + r.skipped + "줄 — 학번 10자리·이름 형식과 중복을 확인하세요)";
+      result.textContent = "추가된 사람이 없습니다. (건너뜀 " + r.skipped + "줄 — 생년월일(숫자)·이름 형식과 중복을 확인하세요)";
     }
     file.addEventListener("change", function () {
       if (!file.files[0]) return;
@@ -1670,7 +1671,7 @@
         h("div", { class: "card ad-card" }, [
           h("h4", {}, "한 명 추가"),
           makeForm([
-            { name: "id", label: "학번", type: "text", required: true, pattern: "^\\d{10}$", patternMsg: "학번은 숫자 10자리로 입력해 주세요." },
+            { name: "id", label: "생년월일(아이디)", type: "text", required: true, pattern: "^\\d{6,12}$", patternMsg: "숫자로 입력해 주세요. (예: 19600315)" },
             { name: "name", label: "이름", type: "text", required: true },
           ], "명단에 추가", function (v, api) {
             if (roster.some(function (r) { return r.id === v.id; })) return api.fail("id", "이미 등록된 학번입니다.");

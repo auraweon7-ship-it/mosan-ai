@@ -1495,6 +1495,8 @@
   function renderStudent() {
     renderStudentBar();
     renderAttendance();
+    renderMy();  // 나의 학습 현황
+    renderQna(); // 질문 게시판(로그인하면 질문 쓰기 칸)
     if (studentModal) drawStudentModal();
   }
 
@@ -1803,8 +1805,339 @@
   renderNotices();
   var noticeEl = section(noticeCfg, [noticeBox]);
 
+  /* ── 수업 당일 안내 띠 ──
+   * 수업 날(과 전날) 화면 위쪽에 시작까지 남은 시간과 Zoom 입장 버튼을 보여 줍니다.
+   * 미리 보기: 주소 끝에 ?now=2026-12-03T18:30 을 붙이면 그 시각인 것처럼 보입니다. */
+  var bannerCfg = C.banner || {};
+  var nowParam = (/[?&]now=([\d\-T:]+)/.exec(location.search) || [])[1];
+  function nowDate() { return (nowParam && parseDate(nowParam)) || new Date(); }
+  // "19:00 – 21:00" → 그날의 시작·끝 시각
+  function classTimes(w) {
+    var m = /(\d{1,2}):(\d{2})\D+(\d{1,2}):(\d{2})/.exec(w._time || "");
+    var d = w._date;
+    var start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), m ? +m[1] : 19, m ? +m[2] : 0);
+    var end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), m ? +m[3] : 21, m ? +m[4] : 0);
+    return { open: new Date(start.getTime() - (bannerCfg.openMinutes || 10) * 60000), start: start, end: end };
+  }
+  function leftText(ms) {
+    var mins = Math.max(1, Math.ceil(ms / 60000));
+    var hh = Math.floor(mins / 60), mm = mins % 60;
+    return (hh ? hh + "시간 " : "") + (mm ? mm + "분" : "");
+  }
+  var bannerEl = h("div", { class: "class-banner", role: "status", "aria-live": "polite", hidden: "hidden" });
+  function renderBanner() {
+    bannerEl.textContent = "";
+    bannerEl.hidden = true;
+    if (bannerCfg.enabled === false) return;
+    var n = nowDate();
+    var today = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+    var w = classMap[dateKey(today)], when = "today";
+    if (!w && bannerCfg.showDayBefore !== false) {
+      w = classMap[dateKey(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1))];
+      when = "tomorrow";
+    }
+    if (!w || store.get("bannerHide", "") === dateKey(today) + "|" + w.week) return;
+    var t = classTimes(w), state, msg;
+    if (when === "tomorrow") { state = "soon"; msg = "내일은 " + w.week + "주차 수업이 있습니다 · " + fmtShort(w._date) + " " + w._time; }
+    else if (n < t.open) { state = "today"; msg = "오늘 " + w._time.split(/\s*[–~-]\s*/)[0] + " 수업 · 시작까지 " + leftText(t.start - n); }
+    else if (n < t.start) { state = "open"; msg = "곧 수업이 시작됩니다! 지금 입장하세요 (" + leftText(t.start - n) + " 남음)"; }
+    else if (n < t.end) { state = "live"; msg = "지금 " + w.week + "주차 수업 중입니다"; }
+    else { state = "done"; msg = "오늘 " + w.week + "주차 수업이 끝났습니다. 수고하셨습니다!"; }
+    var more = h("button", { class: "cb-link", type: "button" }, "수업 내용 보기");
+    more.addEventListener("click", function () { openWeek(w); });
+    var hide = h("button", { class: "cb-close", type: "button", "aria-label": "오늘은 그만 보기", title: "오늘은 그만 보기" }, "×");
+    hide.addEventListener("click", function () { store.set("bannerHide", dateKey(today) + "|" + w.week); renderBanner(); });
+    bannerEl.className = "class-banner cb-" + state;
+    [
+      h("div", { class: "container cb-inner" }, [
+        h("span", { class: "cb-dot", "aria-hidden": "true" }),
+        h("div", { class: "cb-text" }, [h("b", {}, msg), h("span", {}, w.week + "주차 · " + w.title)]),
+        h("div", { class: "cb-actions" }, [zoom && state !== "done" ? zoomButton("btn-sm") : null, more, hide]),
+      ]),
+    ].forEach(function (el) { bannerEl.appendChild(el); });
+    bannerEl.hidden = false;
+  }
+  renderBanner();
+  setInterval(renderBanner, 30000);
+
+  /* ── 나의 학습 현황과 수료증 ── */
+  var myCfg = C.mystatus;
+  var cert = room.certificate || {};
+  var myBox = h("div", { class: "my-box" });
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function myTile(icon, label, value, sub) {
+    return h("div", { class: "card my-tile" }, [
+      h("span", { class: "my-tile-ico", "aria-hidden": "true" }, icon),
+      h("small", {}, label), h("b", {}, value), sub ? h("span", {}, sub) : null,
+    ]);
+  }
+  function renderMy() {
+    if (!myCfg) return;
+    myBox.textContent = "";
+    var me = store.get("session", null);
+    if (!me || (REMOTE && !me.approved)) {
+      var su = h("button", { class: "btn btn-primary btn-sm", type: "button" }, "회원가입");
+      su.addEventListener("click", openSignup);
+      var li = h("button", { class: "btn btn-ghost btn-sm", type: "button" }, "로그인");
+      li.addEventListener("click", function () { openStudent(null); });
+      myBox.appendChild(h("div", { class: "card my-guest" }, [
+        h("span", { class: "my-guest-ico", "aria-hidden": "true" }, "📈"),
+        h("div", {}, [
+          h("h3", {}, me ? "관리자 승인을 기다리고 있습니다" : "로그인하면 나의 학습 현황을 볼 수 있습니다"),
+          h("p", {}, me ? "승인되면 출석·결과물 현황과 수료증 발급 상태가 이곳에 표시됩니다." : "출석 횟수, 주차별 결과물, 수료까지 남은 출석 횟수를 한눈에 확인하고 수료증을 내려받을 수 있습니다."),
+        ]),
+        me ? null : h("div", { class: "meta-row" }, [su, li]),
+      ]));
+      return;
+    }
+    var myAtt = (store.get("attendance", {})[me.id]) || {};
+    var attended = weeks.filter(function (w) { return myAtt[w.week]; }).length;
+    var n = nowDate();
+    var held = weeks.filter(function (w) { return w._date <= n; }).length;
+    var allOut = store.get("outcomes", {});
+    var myOut = allOut[me.id] || {};
+    var outDone = weeks.filter(function (w) { return myOut[w.week]; }).length;
+    var need = cert.minAttendance || Math.ceil(weeks.length * 0.8);
+    var left = Math.max(0, need - attended);
+    var canIssue = attended >= need || cert.preview;
+
+    var tiles = h("div", { class: "grid grid-4 my-tiles" }, [
+      myTile("✅", "출석", attended + " / " + weeks.length + "회", held ? "지금까지 " + held + "회 중 " + Math.round(attended / held * 100) + "%" : "아직 수업 전입니다"),
+      myTile("🏅", "주차별 결과물", outDone + " / " + weeks.length + "개", "아래 체크리스트에서 표시"),
+      myTile("🎓", "수료까지", left ? left + "회 더 출석" : "조건 충족!", "수료 기준: 출석 " + need + "회 이상"),
+      myTile("📅", "진행 상황", held + " / " + weeks.length + "주차", held < weeks.length ? "남은 수업 " + (weeks.length - held) + "회" : "전 과정 종료"),
+    ]);
+
+    // 교육 영역별 출석 막대
+    var stageBars = stages.length ? h("div", { class: "card my-stages" }, [h("h3", { class: "card-title" }, "📊 교육 영역별 출석")].concat(stages.map(function (s) {
+      var ws = weeks.filter(function (w) { return w.stage === s.name; });
+      var got = ws.filter(function (w) { return myAtt[w.week]; }).length;
+      return h("div", { class: "bar-row" }, [
+        h("div", { class: "bar-top" }, [h("span", {}, s.name), h("b", {}, got + " / " + ws.length + "회")]),
+        h("div", { class: "bar" }, [h("div", { class: "bar-fill", style: "width:" + (ws.length ? got / ws.length * 100 : 0) + "%;background:" + s.color })]),
+      ]);
+    }))) : null;
+
+    // 주차별 결과물 체크리스트 (이 브라우저에 저장)
+    var checklist = h("details", { class: "card my-check" }, [
+      h("summary", {}, [h("b", {}, "📝 주차별 결과물 체크리스트"), h("span", { class: "wd-count" }, outDone + "/" + weeks.length)]),
+      h("p", { class: "card-note" }, "결과물을 완성한 주차에 표시해 두세요. 표시는 이 기기(브라우저)에 저장됩니다."),
+      h("ul", { class: "my-out-list" }, weeks.map(function (w) {
+        var box = h("input", { type: "checkbox", id: "out-" + w.week });
+        box.checked = !!myOut[w.week];
+        box.addEventListener("change", function () {
+          var all = store.get("outcomes", {});
+          var mine = all[me.id] || {};
+          if (box.checked) mine[w.week] = Date.now(); else delete mine[w.week];
+          all[me.id] = mine;
+          store.set("outcomes", all);
+          var keepOpen = checklist.open;
+          renderMy();
+          var again = myBox.querySelector(".my-check");
+          if (again) again.open = keepOpen;
+        });
+        return h("li", { class: myAtt[w.week] ? "attended" : "" }, [
+          box,
+          h("label", { for: "out-" + w.week }, [h("b", {}, w.week + "주차"), " " + (w.outcome || w.title)]),
+          myAtt[w.week] ? h("span", { class: "tag tag-assign" }, "출석") : null,
+        ]);
+      })),
+    ]);
+
+    // 수료증
+    var certBtn = h("button", { class: "btn btn-primary", type: "button" }, "🎓 수료증 보기·인쇄");
+    if (!canIssue) certBtn.disabled = true;
+    certBtn.addEventListener("click", function () { openCertificate(me, attended); });
+    var certCard = h("div", { class: "card my-cert" + (attended >= need ? " ready" : "") }, [
+      h("div", { class: "my-cert-ico", "aria-hidden": "true" }, "🎓"),
+      h("div", {}, [
+        h("h3", {}, attended >= need ? "수료 조건을 채웠습니다!" : "수료증"),
+        h("p", {}, attended >= need ? "수료를 축하드립니다. 아래 버튼으로 수료증을 열어 인쇄하거나 PDF로 저장하세요."
+          : "출석 " + need + "회 이상이면 수료증이 발급됩니다. 지금 " + attended + "회 출석했습니다."),
+        cert.preview && attended < need ? h("p", { class: "card-note" }, "※ 시범 운영 중이라 조건을 채우기 전에도 미리 볼 수 있습니다(미리 보기 표시가 찍힙니다).") : null,
+        certBtn,
+      ]),
+    ]);
+
+    [tiles, h("div", { class: "grid grid-2 my-row" }, [stageBars, certCard]), checklist].forEach(function (el) { if (el) myBox.appendChild(el); });
+  }
+  // 수료증: 화면 안의 창에 인쇄용 증서를 띄웁니다(팝업 차단과 상관없이 열림).
+  // '인쇄 · PDF로 저장'을 누르고 프린터에서 'PDF로 저장'을 고르면 파일로 받을 수 있습니다.
+  function openCertificate(me, attended) {
+    var html = certificateHtml(me, attended);
+    var lastFocus = document.activeElement;
+    var frame = h("iframe", { class: "cert-frame", title: "수료증 미리 보기", srcdoc: html });
+    var printBtn = h("button", { class: "btn btn-primary btn-sm", type: "button" }, "🖨️ 인쇄 · PDF로 저장");
+    printBtn.addEventListener("click", function () { frame.contentWindow.focus(); frame.contentWindow.print(); });
+    var closeBtn = h("button", { class: "modal-close", type: "button", "aria-label": "닫기" }, "×");
+    var modal = h("div", { class: "modal modal-wide cert-modal", role: "dialog", "aria-modal": "true", "aria-label": "수료증" }, [
+      closeBtn, h("div", { class: "cert-bar" }, [h("b", {}, "🎓 수료증"), printBtn]), frame,
+    ]);
+    var backdrop = h("div", { class: "modal-backdrop" }, [modal]);
+    function close() {
+      backdrop.classList.remove("show");
+      document.removeEventListener("keydown", onKey);
+      setTimeout(function () { backdrop.remove(); }, 250);
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }
+    function onKey(e) { if (e.key === "Escape") close(); }
+    closeBtn.addEventListener("click", close);
+    backdrop.addEventListener("click", function (e) { if (e.target === backdrop) close(); });
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(backdrop);
+    requestAnimationFrame(function () { backdrop.classList.add("show"); printBtn.focus(); });
+  }
+  function certificateHtml(me, attended) {
+    var need = cert.minAttendance || Math.ceil(weeks.length * 0.8);
+    var preview = attended < need;
+    var d = nowDate();
+    var issued = d.getFullYear() + "년 " + (d.getMonth() + 1) + "월 " + d.getDate() + "일";
+    var birth = /^\d{8}$/.test(me.id) ? me.id.slice(0, 4) + ". " + me.id.slice(4, 6) + ". " + me.id.slice(6) : "";
+    var no = (cert.numberPrefix || "") + String(parseInt(sha256(me.id + "|" + me.name).slice(0, 6), 16) % 10000).padStart(4, "0");
+    return ('<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>수료증 - ' + esc(me.name) + '</title>' +
+      '<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;700;900&display=swap" rel="stylesheet">' +
+      '<style>@page{size:A4 portrait;margin:0}*{box-sizing:border-box}body{margin:0;background:#eceff4;font-family:"Noto Serif KR",serif;color:#2b3a55}' +
+      'body{padding:16px 0}.paper{width:210mm;height:297mm;margin:0 auto;background:#fff;padding:18mm;position:relative;box-shadow:0 10px 30px rgba(43,58,85,.15)}' +
+      '.frame{height:100%;border:3px double #27b39b;outline:1px solid #f6a93b;outline-offset:-10px;padding:22mm 18mm;display:flex;flex-direction:column;text-align:center;position:relative}' +
+      '.no{text-align:left;font-size:13px}.dots{display:flex;gap:6px;justify-content:center;margin:24mm 0 6mm}.dots i{width:10px;height:10px;border-radius:50%;background:#ec5f8f}.dots i+i{background:#f6a93b}.dots i+i+i{background:#27b39b}' +
+      'h1{font-size:46px;letter-spacing:.3em;margin:0 0 18mm;font-weight:900}' +
+      'dl{display:grid;grid-template-columns:30mm 1fr;gap:4mm 0;text-align:left;font-size:17px;margin:0 auto 14mm;width:120mm}dt{font-weight:700}dd{margin:0}' +
+      '.text{font-size:18px;line-height:2;margin:0 6mm;word-break:keep-all}.date{margin-top:auto;font-size:17px}.issuer{font-size:26px;font-weight:900;margin-top:10mm;letter-spacing:.1em}' +
+      '.stamp{display:inline-block;width:18mm;height:18mm;border:2px solid #d9534f;color:#d9534f;border-radius:50%;font-size:11px;line-height:1.2;padding-top:4.5mm;margin-left:4mm;vertical-align:middle;letter-spacing:0}' +
+      '.preview{position:absolute;top:45%;left:50%;transform:translate(-50%,-50%) rotate(-24deg);font-size:64px;color:rgba(236,95,143,.18);font-weight:900;white-space:nowrap;pointer-events:none}' +
+      '@media print{body{background:#fff;padding:0}.paper{margin:0;box-shadow:none}}</style></head><body>' +
+      '<div class="paper"><div class="frame">' + (preview ? '<div class="preview">미리 보기</div>' : '') +
+      '<div class="no">제 ' + esc(no) + ' 호</div><div class="dots"><i></i><i></i><i></i></div>' +
+      '<h1>' + esc(cert.title || "수료증") + '</h1>' +
+      '<dl><dt>성 명</dt><dd>' + esc(me.name) + '</dd>' + (birth ? '<dt>생년월일</dt><dd>' + esc(birth) + '</dd>' : '') +
+      '<dt>과 정 명</dt><dd>' + esc(site.courseTitle) + ' · ' + esc(String(C.hero.subtitle || "").replace(/\*/g, "")) + '</dd>' +
+      '<dt>교육기간</dt><dd>' + esc(cert.period || "") + '</dd><dt>출석</dt><dd>' + attended + '회</dd></dl>' +
+      '<p class="text">' + esc(cert.text || "") + '</p>' +
+      '<div class="date">' + issued + '</div>' +
+      '<div class="issuer">' + esc(cert.issuer || site.university) + '<span class="stamp">직인<br>생략</span></div>' +
+      '</div></div></body></html>');
+  }
+  var myEl = myCfg ? section(myCfg, [myBox]) : null;
+
+  /* ── 질문 게시판 ──
+   * 서버에 연결되어 있으면 모두에게 보이고, 아니면 이 브라우저에만 저장됩니다(시범 운영). */
+  var qnaCfg = C.qna;
+  var qnaBox = h("div", { class: "qna-box" });
+  var qnaList = [];
+  function maskName(n) {
+    n = String(n || "");
+    return n.length <= 1 ? n : n.length === 2 ? n.charAt(0) + "*" : n.charAt(0) + new Array(n.length - 1).join("*") + n.charAt(n.length - 1);
+  }
+  function qnaAdmin() { return !!(window.KU && window.KU.adminOn && window.KU.adminOn()); }
+  function qnaAdminToken() { var s = store.get("adminLogin", null); return s && s.token; }
+  function loadQna() {
+    if (!qnaCfg) return;
+    if (!REMOTE) { qnaList = store.get("questions", []); return renderQna(); }
+    var me = store.get("session", null);
+    call("GET", "questions", undefined, me && me.token).then(function (r) { qnaList = r.questions || []; renderQna(); })
+      .catch(function () { renderQna(); });
+  }
+  function qnaSaved(r) {
+    if (REMOTE) qnaList = r.questions || [];
+    else store.set("questions", qnaList);
+    renderQna();
+  }
+  function renderQna() {
+    if (!qnaCfg) return;
+    qnaBox.textContent = "";
+    var me = store.get("session", null);
+    var isAdmin = qnaAdmin();
+    // 질문 쓰기
+    if (me) {
+      var form = makeForm([
+        { name: "title", label: "제목", type: "text", required: true, placeholder: "예) 3주차 PDF 첨부가 안 돼요" },
+        { name: "body", label: "질문 내용", type: "textarea", required: true, placeholder: "어떤 화면에서 무엇을 하다가 막혔는지 적어 주세요." },
+      ], "질문 올리기", function (v, api) {
+        var title = String(v.title).trim().slice(0, 100), body = String(v.body).trim().slice(0, 2000);
+        if (REMOTE) {
+          return call("POST", "questions", { title: title, body: body }, me.token)
+            .then(function (r) { qnaSaved(r); showToast("질문이 등록되었습니다."); })
+            .catch(function (err) { api.error(err.message); });
+        }
+        qnaList.unshift({ id: "q" + Date.now(), sid: me.id, title: title, body: body, author: maskName(me.name), at: Date.now(), answer: "", answeredAt: 0 });
+        qnaSaved();
+        showToast("질문이 등록되었습니다.");
+      });
+      qnaBox.appendChild(h("div", { class: "card qna-ask" }, [h("h3", { class: "card-title" }, "✍️ 질문하기"), form]));
+    } else {
+      var su = h("button", { class: "btn btn-primary btn-sm", type: "button" }, "회원가입");
+      su.addEventListener("click", openSignup);
+      var li = h("button", { class: "btn btn-ghost btn-sm", type: "button" }, "로그인");
+      li.addEventListener("click", function () { openStudent(null); });
+      qnaBox.appendChild(h("div", { class: "card qna-ask qna-guest" }, [
+        h("p", {}, "질문을 남기려면 로그인해 주세요. 다른 분들의 질문과 답변은 누구나 볼 수 있습니다."),
+        h("div", { class: "meta-row" }, [su, li]),
+      ]));
+    }
+    // 질문 목록
+    var answered = qnaList.filter(function (q) { return q.answer; }).length;
+    qnaBox.appendChild(h("div", { class: "qna-head" }, [
+      h("b", {}, "질문 " + qnaList.length + "개"),
+      h("span", {}, "답변 완료 " + answered + " · 답변 대기 " + (qnaList.length - answered)),
+    ]));
+    if (!qnaList.length) {
+      qnaBox.appendChild(h("p", { class: "card qna-empty" }, qnaCfg.emptyText || "아직 질문이 없습니다."));
+      return;
+    }
+    qnaBox.appendChild(h("div", { class: "qna-list" }, qnaList.map(function (q) {
+      var mine = q.mine || (!REMOTE && me && q.sid === me.id);
+      var tools = [];
+      if (isAdmin) {
+        var ans = h("textarea", { class: "qna-answer-input", rows: "3", placeholder: "답변을 입력하세요" });
+        ans.value = q.answer || "";
+        var save = h("button", { class: "btn btn-primary btn-sm", type: "button" }, q.answer ? "답변 고치기" : "답변 등록");
+        save.addEventListener("click", function () {
+          var text = ans.value.trim().slice(0, 4000);
+          if (REMOTE) {
+            return call("POST", "admin/questions/" + q.id + "/answer", { answer: text }, qnaAdminToken())
+              .then(function (r) { qnaSaved(r); showToast("답변을 저장했습니다."); }).catch(function (err) { showToast(err.message); });
+          }
+          q.answer = text; q.answeredAt = text ? Date.now() : 0;
+          qnaSaved(); showToast("답변을 저장했습니다.");
+        });
+        tools.push(h("div", { class: "qna-admin" }, [h("small", {}, "🔓 관리자 답변"), ans, save]));
+      }
+      if (isAdmin || mine) {
+        var del = h("button", { class: "modal-link qna-del", type: "button" }, "질문 삭제");
+        del.addEventListener("click", function () {
+          if (!confirm("이 질문을 삭제할까요?")) return;
+          if (REMOTE) {
+            var path = isAdmin ? "admin/questions/" + q.id : "questions/" + q.id;
+            return call("DELETE", path, undefined, isAdmin ? qnaAdminToken() : me.token)
+              .then(qnaSaved).catch(function (err) { showToast(err.message); });
+          }
+          qnaList = qnaList.filter(function (x) { return x !== q; });
+          qnaSaved();
+        });
+        tools.push(del);
+      }
+      return h("details", { class: "card qna-item" + (q.answer ? " answered" : "") }, [
+        h("summary", {}, [
+          h("span", { class: "tag " + (q.answer ? "tag-assign" : "") }, q.answer ? "답변 완료" : "답변 대기"),
+          h("span", { class: "qna-title" }, q.title),
+          h("span", { class: "qna-meta" }, q.author + (mine ? " (나)" : "") + " · " + fmtStamp(q.at)),
+        ]),
+        h("div", { class: "qna-body" }, [
+          h("p", { class: "qna-q" }, q.body),
+          q.answer ? h("div", { class: "qna-a" }, [
+            h("small", {}, "💬 강사 답변" + (q.answeredAt ? " · " + fmtStamp(q.answeredAt) : "")),
+            h("p", {}, q.answer),
+          ]) : h("p", { class: "qna-wait" }, "강사가 확인 후 답변해 드립니다."),
+        ].concat(tools)),
+      ]);
+    })));
+  }
+  var qnaEl = qnaCfg ? section(qnaCfg, [REMOTE ? null : notice(qnaCfg.notice), qnaBox]) : null;
+
   var main = document.getElementById("main");
-  [heroEl, statsEl, aboutEl, curEl, folioEl, guideEl, joinEl, faqEl, noticeEl].forEach(function (el) { if (el) main.appendChild(el); });
+  [bannerEl, heroEl, statsEl, aboutEl, curEl, myEl, folioEl, guideEl, joinEl, qnaEl, faqEl, noticeEl].forEach(function (el) { if (el) main.appendChild(el); });
+  renderMy();
+  loadQna();
   updatePoll();
   renderApply();
   renderStudent();
@@ -2124,6 +2457,8 @@
         renderFolio();
       },
     },
+    // 관리자 로그인·로그아웃 때 질문 게시판의 답변 칸을 보이거나 숨깁니다.
+    qna: { refresh: function () { renderQna(); } },
     // 달력 일정을 바꾼 뒤 새로고침 없이 달력을 다시 그립니다.
     calendar: {
       refresh: function (events) {

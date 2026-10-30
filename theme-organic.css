@@ -385,3 +385,91 @@ a { color: var(--c-blue); }
 @media (max-width: 380px) { .header-signup { padding: 8px 10px; } }
 /* 좁은 휴대폰: 버튼이 늘어 제목이 잘리면 로고만 보이게 합니다 */
 @media (max-width: 420px) { .brand-text { display: none; } }
+
+/* ── 수업 당일 안내 띠 ── */
+.class-banner { position: sticky; top: var(--header-h); z-index: 40; background: linear-gradient(90deg, #2d6cdf, #27b39b); color: #fff; box-shadow: 0 8px 20px rgba(43, 58, 85, 0.18); }
+.class-banner[hidden] { display: none; }
+.class-banner.cb-soon { background: linear-gradient(90deg, #5b6b8c, #7b869b); }
+.class-banner.cb-open { background: linear-gradient(90deg, #f39324, #ec5f8f); }
+.class-banner.cb-live { background: linear-gradient(90deg, #e2457a, #c7417b); }
+.class-banner.cb-done { background: linear-gradient(90deg, #5b6b8c, #2b3a55); }
+.cb-inner { display: flex; align-items: center; gap: 14px; padding-top: 10px; padding-bottom: 10px; flex-wrap: wrap; }
+.cb-dot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.3); }
+.cb-live .cb-dot, .cb-open .cb-dot { animation: cb-pulse 1.4s ease-in-out infinite; }
+@keyframes cb-pulse { 50% { box-shadow: 0 0 0 9px rgba(255, 255, 255, 0); } }
+.cb-text { flex: 1; min-width: 200px; display: grid; line-height: 1.4; }
+.cb-text b { font-size: 16px; }
+.cb-text span { font-size: 13px; opacity: 0.9; }
+.cb-actions { display: flex; align-items: center; gap: 8px; }
+.class-banner .btn-zoom { background: #fff; color: #2d6cdf; box-shadow: none; }
+.cb-link { border: 1.5px solid rgba(255, 255, 255, 0.7); background: transparent; color: #fff; border-radius: 999px; padding: 7px 14px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.cb-link:hover { background: rgba(255, 255, 255, 0.15); }
+.cb-close { border: 0; background: transparent; color: #fff; font-size: 22px; line-height: 1; cursor: pointer; padding: 4px 6px; opacity: 0.85; }
+@media (max-width: 600px) {
+  .cb-actions { width: 100%; }
+  .cb-actions .btn-zoom { flex: 1; text-align: center; }
+}
+@media (prefers-reduced-motion: reduce) { .cb-dot { animation: none !important; } }
+
+/* ── 나의 학습 현황 ── */
+.my-box { display: grid; gap: 22px; }
+.card.my-guest { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.my-guest-ico, .my-cert-ico { flex: none; width: 64px; height: 64px; display: grid; place-items: center; font-size: 30px; border-radius: var(--blob); background: var(--g-teal); box-shadow: 0 10px 22px rgba(26, 156, 134, 0.3); }
+.my-guest > div:nth-child(2) { flex: 1; min-width: 220px; }
+.my-guest h3, .my-cert h3 { margin: 0 0 4px; font-size: 19px; }
+.my-guest p, .my-cert p { margin: 0 0 10px; color: var(--navy-soft); }
+.my-tiles { gap: 18px; }
+.card.my-tile { display: grid; gap: 2px; padding: 20px; }
+.my-tile-ico { font-size: 22px; margin-bottom: 4px; }
+.my-tile small { color: var(--navy-soft); font-size: 13px; font-weight: 700; }
+.my-tile b { font-size: 24px; font-weight: 800; }
+.my-tile span { font-size: 13px; color: var(--navy-soft); }
+.my-row { gap: 22px; align-items: start; }
+.my-stages .bar-row + .bar-row { margin-top: 10px; }
+.card.my-cert { display: flex; gap: 18px; align-items: flex-start; }
+.my-cert-ico { background: var(--g-orange); box-shadow: 0 10px 22px rgba(243, 147, 36, 0.3); }
+.my-cert.ready .my-cert-ico { animation: blob-morph 6s ease-in-out infinite alternate; }
+.my-cert .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+.card.my-check summary { display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }
+.card.my-check summary::-webkit-details-marker { display: none; }
+.card.my-check summary::after { content: "펼치기 ▾"; margin-left: auto; font-size: 13px; color: var(--navy-soft); }
+.card.my-check[open] summary::after { content: "접기 ▴"; }
+.my-out-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; }
+.my-out-list li { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 14px; box-shadow: var(--nm-in); font-size: 14px; }
+.my-out-list input { flex: none; width: 20px; height: 20px; accent-color: var(--c-teal); }
+.my-out-list label { flex: 1; min-width: 0; cursor: pointer; }
+.my-out-list label b { margin-right: 4px; }
+@media (max-width: 760px) { .my-out-list { grid-template-columns: 1fr; } .card.my-cert { flex-direction: column; } }
+
+/* ── 질문 게시판 ── */
+.qna-box { display: grid; gap: 18px; }
+.qna-ask .form-grid { grid-template-columns: 1fr; }
+.qna-guest { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.qna-guest p { margin: 0; color: var(--navy-soft); }
+.qna-head { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; padding: 0 4px; }
+.qna-head span { color: var(--navy-soft); font-size: 14px; }
+.qna-empty { text-align: center; color: var(--navy-soft); margin: 0; }
+.qna-list { display: grid; gap: 12px; }
+.card.qna-item { padding: 0; overflow: hidden; box-shadow: var(--nm-out-sm); }
+.qna-item summary { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 16px 20px; cursor: pointer; list-style: none; }
+.qna-item summary::-webkit-details-marker { display: none; }
+.qna-title { flex: 1; min-width: 180px; font-weight: 700; font-size: 16px; }
+.qna-meta { font-size: 13px; color: var(--navy-soft); }
+.qna-body { display: grid; gap: 12px; padding: 4px 20px 20px; border-top: 1px solid var(--line); }
+.qna-q { margin: 12px 0 0; white-space: pre-wrap; line-height: 1.7; }
+.qna-a { padding: 12px 16px; border-radius: 16px; box-shadow: var(--nm-in); border-left: 4px solid var(--c-teal); }
+.qna-a small { display: block; font-weight: 700; color: var(--c-teal); margin-bottom: 4px; }
+.qna-a p { margin: 0; white-space: pre-wrap; line-height: 1.7; }
+.qna-wait { margin: 0; color: var(--navy-soft); font-size: 14px; }
+.qna-admin { display: grid; gap: 8px; padding: 12px; border-radius: 16px; background: var(--pink-100); }
+.qna-admin small { font-weight: 700; color: #a8325e; }
+.qna-answer-input { width: 100%; padding: 10px 12px; border-radius: 12px; border: 0; box-shadow: var(--nm-in); background: var(--bg); font: inherit; font-size: 15px; color: var(--navy); resize: vertical; }
+.qna-admin .btn { justify-self: start; }
+.qna-del { justify-self: end; color: #c23a6b; }
+/* 메뉴가 늘어 넓은 화면에서도 제목이 잘리지 않도록 메뉴 간격을 줄입니다 */
+@media (max-width: 1400px) { .site-nav a { padding: 8px 8px; font-size: 13.5px; } .site-nav a.active::after { left: 8px; right: 8px; } }
+/* 수료증 창 */
+.modal.cert-modal { width: min(880px, 100%); height: calc(100vh - 40px); padding: 18px; display: flex; flex-direction: column; gap: 12px; text-align: left; }
+.cert-bar { display: flex; align-items: center; gap: 14px; padding-right: 44px; }
+.modal.cert-modal .cert-bar .btn { width: auto; margin: 0; }
+.cert-frame { flex: 1; width: 100%; border: 0; border-radius: 16px; background: #eceff4; box-shadow: var(--nm-in); }

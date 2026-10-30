@@ -53,7 +53,9 @@ async function initDb() {
   ];
   tables.push(
     // 수강생 명단: 수강 신청서를 내면 자동으로 들어가고, 관리자가 직접 넣을 수도 있습니다.
-    "CREATE TABLE IF NOT EXISTS roster (student_id TEXT PRIMARY KEY, name TEXT NOT NULL, department TEXT NOT NULL, grade TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, source TEXT NOT NULL, created_at BIGINT NOT NULL, approved BOOLEAN NOT NULL DEFAULT FALSE)"
+    "CREATE TABLE IF NOT EXISTS roster (student_id TEXT PRIMARY KEY, name TEXT NOT NULL, department TEXT NOT NULL, grade TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, source TEXT NOT NULL, created_at BIGINT NOT NULL, approved BOOLEAN NOT NULL DEFAULT FALSE)",
+    // 질문 게시판: 수강생 질문과 강사 답변
+    "CREATE TABLE IF NOT EXISTS questions (id SERIAL PRIMARY KEY, student_id TEXT NOT NULL, name TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, answer TEXT NOT NULL DEFAULT '', created_at BIGINT NOT NULL, answered_at BIGINT NOT NULL DEFAULT 0)"
   );
   for (const sql of tables) await pool.query(sql);
   // 과제를 구글 드라이브 공유 주소로 내기 전에 만든 제출 표에는 주소 열을 덧붙입니다(이미 있으면 그대로)
@@ -93,10 +95,13 @@ async function initDb() {
   }
 }
 
-// 수강생 명단에 넣기(이미 있으면 정보만 고침). 학번·이름이 맞지 않으면 false
+// 로그인 아이디 형식: 숫자 6~12자리 (신청서의 studentId 칸 — 지금은 생년월일 8자리)
+const ID_RE = /^\d{6,12}$/;
+
+// 수강생 명단에 넣기(이미 있으면 정보만 고침). 아이디·이름이 맞지 않으면 false
 async function enroll(d, source, at) {
   const id = str(d.studentId || d.id, 20).trim(), name = str(d.name, 40).trim();
-  if (!/^\d{10}$/.test(id) || !name) return false;
+  if (!ID_RE.test(id) || !name) return false;
   await pool.query(
     "INSERT INTO roster (student_id, name, department, grade, email, phone, source, created_at, approved) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) " +
     "ON CONFLICT (student_id) DO UPDATE SET name = EXCLUDED.name, department = EXCLUDED.department, grade = EXCLUDED.grade, email = EXCLUDED.email, phone = EXCLUDED.phone",
@@ -302,14 +307,14 @@ api.post("/student/login", needDb, wrap(async function (req, res) {
   const cfg = await effectiveConfig();
   const room = cfg.classroom || {};
   const id = str(req.body.id, 20).trim(), name = str(req.body.name, 40).trim();
-  if (!/^\d{10}$/.test(id) || !name) return res.status(400).json({ error: "학번과 이름을 확인해 주세요.", field: "id" });
+  if (!ID_RE.test(id) || !name) return res.status(400).json({ error: "생년월일(숫자)과 이름을 확인해 주세요.", field: "id" });
   // 학번과 이름만으로 로그인합니다(수강 코드는 쓰지 않습니다).
   // 수강 신청서를 내서 명단에 있는 학번·이름만 로그인할 수 있습니다.
   const hashes = room.rosterHashes || [];
   const row = await pool.query("SELECT name FROM roster WHERE student_id = $1", [id]);
   const inTable = row.rows.length && row.rows[0].name === name;
   if (!inTable && hashes.indexOf(rosterHash(id, name)) < 0) {
-    return res.status(403).json({ error: "수강생 명단에 없는 학번·이름입니다. 수강 신청서를 먼저 내 주세요.", field: "id" });
+    return res.status(403).json({ error: "가입되지 않은 생년월일·이름입니다. 회원가입을 먼저 해 주세요.", field: "id" });
   }
   res.json({
     token: sign({ role: "student", id: id, name: name, exp: Date.now() + 30 * DAY }), id: id, name: name,
@@ -454,7 +459,7 @@ api.post("/admin/roster", needDb, needAdmin, wrap(async function (req, res) {
   let added = 0, skipped = 0;
   for (const st of list) {
     const id = str(st && st.id, 20).trim();
-    const exists = /^\d{10}$/.test(id) && (await pool.query("SELECT 1 FROM roster WHERE student_id = $1", [id])).rows.length;
+    const exists = ID_RE.test(id) && (await pool.query("SELECT 1 FROM roster WHERE student_id = $1", [id])).rows.length;
     if (!exists && (await enroll(st || {}, "admin"))) added++; else skipped++;
   }
   res.json({ added: added, skipped: skipped });
@@ -490,11 +495,50 @@ api.get("/admin/records", needDb, needAdmin, wrap(async function (req, res) {
   });
 }));
 
+/* 질문 게시판 — 읽기는 누구나, 쓰기는 로그인한 수강생, 답변은 관리자 */
+function maskName(n) {
+  n = String(n || "");
+  return n.length <= 1 ? n : n.length === 2 ? n[0] + "*" : n[0] + "*".repeat(n.length - 2) + n[n.length - 1];
+}
+async function questionList(req) {
+  const t = bearer(req);
+  const r = await pool.query("SELECT id, student_id, name, title, body, answer, created_at, answered_at FROM questions ORDER BY created_at DESC LIMIT 300");
+  return r.rows.map(function (x) {
+    return {
+      id: x.id, title: x.title, body: x.body, author: maskName(x.name), at: Number(x.created_at),
+      answer: x.answer, answeredAt: Number(x.answered_at), mine: !!(t && t.role === "student" && t.id === x.student_id),
+    };
+  });
+}
+api.get("/questions", needDb, wrap(async function (req, res) { res.json({ questions: await questionList(req) }); }));
+api.post("/questions", needDb, needStudent, wrap(async function (req, res) {
+  if (tooMany(req)) return res.status(429).json({ error: "질문을 여러 번 올렸습니다. 잠시 뒤 다시 해 주세요." });
+  const title = str(req.body.title, 100).trim(), body = str(req.body.body, 2000).trim();
+  if (!title || !body) return res.status(400).json({ error: "제목과 내용을 입력해 주세요." });
+  await pool.query("INSERT INTO questions (student_id, name, title, body, answer, created_at, answered_at) VALUES ($1, $2, $3, $4, '', $5, 0)",
+    [req.student.id, req.student.name, title, body, Date.now()]);
+  res.json({ questions: await questionList(req) });
+}));
+// 내가 쓴 질문 지우기
+api.delete("/questions/:id", needDb, needStudent, wrap(async function (req, res) {
+  await pool.query("DELETE FROM questions WHERE id = $1 AND student_id = $2", [Number(req.params.id) || 0, req.student.id]);
+  res.json({ questions: await questionList(req) });
+}));
+api.post("/admin/questions/:id/answer", needDb, needAdmin, wrap(async function (req, res) {
+  const answer = str(req.body.answer, 4000).trim();
+  await pool.query("UPDATE questions SET answer = $1, answered_at = $2 WHERE id = $3", [answer, answer ? Date.now() : 0, Number(req.params.id) || 0]);
+  res.json({ questions: await questionList(req) });
+}));
+api.delete("/admin/questions/:id", needDb, needAdmin, wrap(async function (req, res) {
+  await pool.query("DELETE FROM questions WHERE id = $1", [Number(req.params.id) || 0]);
+  res.json({ questions: await questionList(req) });
+}));
+
 api.use(function (req, res) { res.status(404).json({ error: "없는 주소입니다." }); });
 app.use("/api", function (req, res, next) { res.set("Cache-Control", "no-store"); next(); }, api);
 
 /* ── 사이트 파일: 정해 둔 파일만 내보냅니다(서버 코드·설정은 내보내지 않음) ── */
-const PUBLIC_FILES = ["index.html", "config.js", "app.js", "admin.js", "styles.css", "AI_WEB_매뉴얼.html"];
+const PUBLIC_FILES = ["index.html", "config.js", "app.js", "admin.js", "styles.css", "theme-organic.css"];
 const noCache = function (res) { res.set("Cache-Control", "no-cache"); }; // 고친 파일이 바로 보이도록 매번 확인
 app.get("/", function (req, res) { noCache(res); res.sendFile(path.join(ROOT, "index.html")); });
 app.get("/config.js", function (req, res, next) {
